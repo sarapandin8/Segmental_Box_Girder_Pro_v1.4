@@ -7,6 +7,7 @@ force vectors and they do not feed the downstream design checks.
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 import pandas as pd
@@ -19,34 +20,51 @@ from visualization.figure_system import (
 
 FORCE_COMPONENT_META: dict[str, dict[str, str]] = {
     "P": {
-        "title": "Axial Force P",
+        "title": "P (Axial)",
+        "section": "5.2.1",
         "unit": "kN",
         "axis": "Axial force, P (kN)",
+        "mapping": "P → Axial",
         "upper": "P max",
         "lower": "P min",
+        "governing": "Governing |P| (Axial)",
+        "metric": "GOVERNING |P| (AXIAL)",
     },
     "V2": {
-        "title": "Vertical Shear V2",
+        "title": "V2 (Vy)",
+        "section": "5.2.2",
         "unit": "kN",
-        "axis": "Vertical shear, V2 (kN)",
+        "axis": "Vertical shear, V2 = Vy (kN)",
+        "mapping": "V2 → Vy",
         "upper": "V2 max",
         "lower": "V2 min",
+        "governing": "Governing |V2| (Vy)",
+        "metric": "GOVERNING |V2| (Vy)",
     },
     "T": {
-        "title": "Torsion T",
+        "title": "T (Torsion)",
+        "section": "5.2.3",
         "unit": "kN·m",
         "axis": "Torsion, T (kN·m)",
+        "mapping": "T → Torsion",
         "upper": "T max",
         "lower": "T min",
+        "governing": "Governing |T| (Torsion)",
+        "metric": "GOVERNING |T| (TORSION)",
     },
     "M3": {
-        "title": "Bending Moment M3",
+        "title": "M3 (Mx)",
+        "section": "5.2.4",
         "unit": "kN·m",
-        "axis": "Bending moment, M3 (kN·m)",
+        "axis": "Bending moment, M3 = Mx (kN·m)",
+        "mapping": "M3 → Mx",
         "upper": "M3 max",
         "lower": "M3 min",
+        "governing": "Governing |M3| (Mx)",
+        "metric": "GOVERNING |M3| (Mx)",
     },
 }
+
 
 
 def _source_text(source: Any) -> str:
@@ -110,6 +128,47 @@ def governing_component_envelope(payload: dict[str, Any], component: str) -> dic
     }
 
 
+def _source_case_label(source: Any) -> str:
+    """Return a row-independent source label for dominance counts."""
+    if not isinstance(source, dict):
+        return "-"
+    case = str(source.get("OutputCase") or "-")
+    step = str(source.get("StepType") or "Single")
+    state = str(source.get("SourceState") or "-")
+    return f"{case} / {step} · {state}"
+
+
+def dominant_component_sources(payload: dict[str, Any], component: str) -> dict[str, dict[str, Any]]:
+    """Return the most frequent upper/lower source across section cuts.
+
+    Source-row numbers are intentionally excluded so repeated governing output
+    cases can be recognized across the full span.
+    """
+    if component not in FORCE_COMPONENT_META:
+        raise ValueError(f"Unsupported FEA force component: {component}")
+    envelopes = payload.get("envelopes", []) if isinstance(payload, dict) else []
+    result: dict[str, dict[str, Any]] = {}
+    for side, suffix in (("max", "max_source"), ("min", "min_source")):
+        labels = [
+            _source_case_label(row.get(f"{component}_{suffix}"))
+            for row in envelopes
+            if isinstance(row, dict)
+        ]
+        labels = [label for label in labels if label != "-"]
+        if not labels:
+            result[side] = {"label": "-", "count": 0, "total": 0, "percentage": 0.0}
+            continue
+        label, count = Counter(labels).most_common(1)[0]
+        total = len(labels)
+        result[side] = {
+            "label": label,
+            "count": int(count),
+            "total": int(total),
+            "percentage": 100.0 * float(count) / float(total),
+        }
+    return result
+
+
 def uls_component_envelope_figure(
     payload: dict[str, Any],
     component: str,
@@ -156,7 +215,7 @@ def uls_component_envelope_figure(
             marker=dict(size=5, color="#1f77b4"),
             customdata=upper_custom,
             hovertemplate=(
-                f"<b>{meta['upper']}</b><br>"
+                f"<b>{meta['upper']} · {meta['title']}</b><br>"
                 "x = %{x:.3f} m<br>"
                 "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
                 f"Value = %{{y:,.3f}} {meta['unit']}<br>"
@@ -174,7 +233,7 @@ def uls_component_envelope_figure(
             marker=dict(size=5, color="#ff2b2b", symbol="circle-open"),
             customdata=lower_custom,
             hovertemplate=(
-                f"<b>{meta['lower']}</b><br>"
+                f"<b>{meta['lower']} · {meta['title']}</b><br>"
                 "x = %{x:.3f} m<br>"
                 "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
                 f"Value = %{{y:,.3f}} {meta['unit']}<br>"
@@ -190,7 +249,7 @@ def uls_component_envelope_figure(
                 x=[governing["distance_m"]],
                 y=[governing["value"]],
                 mode="markers",
-                name=f"Governing |{component}|",
+                name=meta["governing"],
                 marker=dict(size=10, color="#111111", symbol="circle"),
                 customdata=[[
                     governing["sect_cut_num"],
@@ -198,7 +257,7 @@ def uls_component_envelope_figure(
                     governing["source"],
                 ]],
                 hovertemplate=(
-                    f"<b>Governing |{component}|</b><br>"
+                    f"<b>{meta['governing']}</b><br>"
                     "x = %{x:.3f} m<br>"
                     "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
                     f"Value = %{{y:,.3f}} {meta['unit']}<br>"
@@ -209,7 +268,7 @@ def uls_component_envelope_figure(
         fig.add_annotation(
             x=governing["distance_m"],
             y=governing["value"],
-            text=f"Governing |{component}|",
+            text=meta["governing"],
             showarrow=True,
             arrowhead=2,
             ax=0,
@@ -224,7 +283,7 @@ def uls_component_envelope_figure(
     span_text = bridge_object or ", ".join(payload.get("bridge_objects", [])) or "Active span"
     title = (
         f"<b>ULS {meta['title']} Envelope</b>"
-        f"<br><span style='font-size:12px'>CSiBridge scalar component envelope · {span_text}</span>"
+        f"<br><span style='font-size:12px'>CSiBridge scalar component envelope · {meta['mapping']} · {span_text}</span>"
     )
     apply_engineering_figure_layout(
         fig,
@@ -260,6 +319,7 @@ def uls_component_envelope_figure(
 
 __all__ = [
     "FORCE_COMPONENT_META",
+    "dominant_component_sources",
     "component_envelope_frame",
     "governing_component_envelope",
     "uls_component_envelope_figure",

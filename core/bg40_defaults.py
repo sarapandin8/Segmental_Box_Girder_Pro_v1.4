@@ -6,7 +6,7 @@ calculation-engine inputs from M1. Internal UI units are kN, m, MPa, and mm.
 
 BG40_DEFAULT = {
     "meta": {
-        "schema_version": "0.5.2-commercial-fea5b-uls-force-review-charts",
+        "schema_version": "0.5.3-commercial-fea5b1-axis-convention-uls-review-polish",
         "app_name": "Segmental Box Girder Pro",
         "dataset_status": "BG40 baseline loaded; AASHTO LRFD 2020 Section 5 governing concrete design basis and DPT seismic database active",
         "schema_note": "Report-driven workspace/subpage schema for commercial-grade QA, traceability, and future report export.",
@@ -286,7 +286,13 @@ BG40_DEFAULT = {
         "source_note": "Import CSiBridge tendon General / Vertical / Horizontal tables to generate layout figures, then explicitly adopt the tendon model before downstream use.",
     },
     "fea_results": {
-        "source_status": "FEA.5B three-stage CSiBridge import hub with nested ULS P/V2/T/M3 source-review charts; downstream design remains disconnected.",
+        "source_status": "FEA.5B1 three-stage CSiBridge import hub with ULS P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) source-review charts; downstream design remains disconnected.",
+        "axis_convention": {
+            "status": "CONFIRMED FOR ACTIVE APP AXES",
+            "source_program": "CSiBridge",
+            "mapping": {"P": "Axial", "V2": "Vy", "T": "Torsion", "M3": "Mx"},
+            "policy": "Retain source field names for traceability; require explicit mapping confirmation for non-CSiBridge imports.",
+        },
         "import_schema_version": "1.0",
         "stage_imports": {
             "uls": {},

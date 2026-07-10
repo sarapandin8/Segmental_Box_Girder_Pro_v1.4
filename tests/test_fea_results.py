@@ -15,7 +15,9 @@ from core.fea_results import (
     stage_source_status,
 )
 from visualization.fea_figures import (
+    FORCE_COMPONENT_META,
     component_envelope_frame,
+    dominant_component_sources,
     governing_component_envelope,
     uls_component_envelope_figure,
 )
@@ -193,12 +195,42 @@ def test_fea5b_component_review_frame_governing_point_and_chart_style():
     assert len(fig.data) == 3
     assert fig.data[0].name == "M3 max"
     assert fig.data[1].line.dash == "dash"
-    assert fig.data[2].name == "Governing |M3|"
+    assert fig.data[2].name == "Governing |M3| (Mx)"
     assert fig.layout.title.x == 0.5
     assert fig.layout.legend.y < 0
     assert "CSiBridge scalar component envelope" in fig.layout.title.text
+    assert "M3 → Mx" in fig.layout.title.text
+    assert fig.layout.yaxis.title.text == "Bending moment, M3 = Mx (kN·m)"
 
 
 def test_fea5b_rejects_unknown_force_component():
     with pytest.raises(ValueError, match="Unsupported FEA force component"):
         component_envelope_frame({"envelopes": []}, "V3")
+
+
+def test_fea5b1_axis_convention_metadata_and_dominant_sources():
+    assert FORCE_COMPONENT_META["P"]["title"] == "P (Axial)"
+    assert FORCE_COMPONENT_META["V2"]["axis"] == "Vertical shear, V2 = Vy (kN)"
+    assert FORCE_COMPONENT_META["T"]["title"] == "T (Torsion)"
+    assert FORCE_COMPONENT_META["M3"]["mapping"] == "M3 → Mx"
+
+    rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "U1", "Combination", "Max", -10, 30, -5, 100],
+        ["B2_SPAN1", 1, 0.0, "After", "U1", "Combination", "Min", -40, -20, 8, 50],
+        ["B2_SPAN1", 1, 0.0, "After", "U2", "Combination", "Max", -8, 25, -3, 80],
+        ["B2_SPAN1", 1, 0.0, "After", "U2", "Combination", "Min", -35, -18, 6, 55],
+        ["B2_SPAN1", 2, 1.0, "Before", "U1", "Combination", "Max", -12, 22, 3, 90],
+        ["B2_SPAN1", 2, 1.0, "Before", "U1", "Combination", "Min", -30, -18, -4, 45],
+        ["B2_SPAN1", 2, 1.0, "Before", "U2", "Combination", "Max", -9, 19, 2, 85],
+        ["B2_SPAN1", 2, 1.0, "Before", "U2", "Combination", "Min", -28, -24, -6, 48],
+        ["B2_SPAN1", 3, 2.0, "After", "U1", "Combination", "Max", -11, 20, 1, 88],
+        ["B2_SPAN1", 3, 2.0, "After", "U1", "Combination", "Min", -29, -19, -5, 40],
+        ["B2_SPAN1", 3, 2.0, "After", "U2", "Combination", "Max", -9, 19, 2, 95],
+        ["B2_SPAN1", 3, 2.0, "After", "U2", "Combination", "Min", -28, -24, -6, 42],
+    ]
+    payload = read_csibridge_force_workbook(_workbook_bytes(rows), filename="uls.xlsx", stage="uls")
+    dominant = dominant_component_sources(payload, "M3")
+    assert dominant["max"]["label"].startswith("U1 / Max")
+    assert dominant["max"]["count"] == 2
+    assert dominant["max"]["total"] == 3
+    assert dominant["min"]["label"].startswith("U1 / Min")

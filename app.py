@@ -124,6 +124,7 @@ from visualization.figure_system import figure_view_badge_text, plotly_config_fo
 from visualization.fea_figures import (
     FORCE_COMPONENT_META,
     component_envelope_frame,
+    dominant_component_sources,
     governing_component_envelope,
     uls_component_envelope_figure,
 )
@@ -9680,10 +9681,11 @@ def _fea_envelope_frame(payload: dict[str, Any], components: list[str]) -> pd.Da
         }
         for component in components:
             unit = units[component]
-            item[f"{component} min ({unit})"] = float(envelope[f"{component}_min"])
-            item[f"{component} min source"] = _fea_source_label(envelope.get(f"{component}_min_source"))
-            item[f"{component} max ({unit})"] = float(envelope[f"{component}_max"])
-            item[f"{component} max source"] = _fea_source_label(envelope.get(f"{component}_max_source"))
+            display_name = FORCE_COMPONENT_META[component]["title"]
+            item[f"{display_name} min ({unit})"] = float(envelope[f"{component}_min"])
+            item[f"{display_name} min source"] = _fea_source_label(envelope.get(f"{component}_min_source"))
+            item[f"{display_name} max ({unit})"] = float(envelope[f"{component}_max"])
+            item[f"{display_name} max source"] = _fea_source_label(envelope.get(f"{component}_max_source"))
         rows.append(item)
     return pd.DataFrame(rows).sort_values("SectCutNum").reset_index(drop=True) if rows else pd.DataFrame()
 
@@ -9694,6 +9696,7 @@ def _fea_global_extrema_frame(payload: dict[str, Any]) -> pd.DataFrame:
     if frame.empty:
         return frame
     frame.insert(1, "Unit", frame["Component"].map(units))
+    frame["Component"] = frame["Component"].map(lambda value: FORCE_COMPONENT_META.get(str(value), {}).get("title", value))
     return frame
 
 
@@ -9725,6 +9728,27 @@ def _fea_semantics_case_display(payload: dict[str, Any]) -> str:
     return " + ".join(parts) or "-"
 
 
+def _fea_axis_convention_html() -> str:
+    return (
+        '<div class="note-box"><b>Axis / force convention:</b> imported source-field names are retained for '
+        'traceability. In the active app convention: <b>P → Axial</b>, <b>V2 → Vy</b>, '
+        '<b>T → Torsion</b>, and <b>M3 → Mx</b>. For a non-CSiBridge source, confirm the source-axis '
+        'mapping before adoption; the app must not infer V2/V3 or M2/M3 directions by name alone.</div>'
+    )
+
+
+def _fea_dominant_source_text(payload: dict[str, Any], component: str) -> str:
+    dominant = dominant_component_sources(payload, component)
+    max_source = dominant.get("max", {})
+    min_source = dominant.get("min", {})
+    return (
+        f"Dominant sources across section cuts — Max: {max_source.get('label', '-')} "
+        f"({int(max_source.get('count', 0))}/{int(max_source.get('total', 0))} cuts); "
+        f"Min: {min_source.get('label', '-')} "
+        f"({int(min_source.get('count', 0))}/{int(min_source.get('total', 0))} cuts)."
+    )
+
+
 def _render_fea_uls_summary(payload: dict[str, Any]) -> None:
     summary = payload.get("summary", {})
     cards = st.columns(4)
@@ -9734,13 +9758,13 @@ def _render_fea_uls_summary(payload: dict[str, Any]) -> None:
         with column:
             if governing:
                 card(
-                    f"GOVERNING |{component}|",
+                    meta["metric"],
                     f"{governing['absolute']:,.2f} {meta['unit']}",
                     f"Signed {governing['value']:,.2f} · Cut {governing['sect_cut_num']} · x={governing['distance_m']:.3f} m",
-                    "pass",
+                    "",
                 )
             else:
-                card(f"GOVERNING |{component}|", "NOT AVAILABLE", "No scalar envelope source is available.", "warn")
+                card(meta["metric"], "NOT AVAILABLE", "No scalar envelope source is available.", "warn")
 
     st.markdown(
         '<div class="warn-box"><b>ULS source semantics:</b> this summary compares scalar extrema only. '
@@ -9770,16 +9794,16 @@ def _render_fea_uls_summary(payload: dict[str, Any]) -> None:
     show_engineering_table(
         pd.DataFrame(
             rows,
-            columns=["Force", "Maximum absolute", "Signed value", "Unit", "SectCutNum", "x (m)", "LocType", "Source trace"],
+            columns=["Force / app axis", "Maximum absolute", "Signed value", "Unit", "SectCutNum", "x (m)", "LocType", "Source trace"],
         )
     )
     cols = st.columns(4)
     with cols[0]:
         card("ULS SOURCE", "READY", str(payload.get("filename") or "-"), "pass")
     with cols[1]:
-        card("SECTION CUTS", str(int(summary.get("sect_cuts", 0))), f"x = {float(summary.get('distance_min_m', 0.0)):.3f}–{float(summary.get('distance_max_m', 0.0)):.3f} m", "pass")
+        card("SECTION CUTS", str(int(summary.get("sect_cuts", 0))), f"x = {float(summary.get('distance_min_m', 0.0)):.3f}–{float(summary.get('distance_max_m', 0.0)):.3f} m", "")
     with cols[2]:
-        card("OUTPUT CASES", str(int(summary.get("output_cases", 0))), _fea_semantics_case_display(payload), "pass")
+        card("OUTPUT CASES", str(int(summary.get("output_cases", 0))), _fea_semantics_case_display(payload), "")
     with cols[3]:
         card("DOWNSTREAM", "NOT YET CONNECTED", "Review-only source visualization", "warn")
 
@@ -9793,17 +9817,17 @@ def _render_fea_uls_component(payload: dict[str, Any], component: str) -> None:
         card("FORCE REVIEW STATUS", "SOURCE READY", "Scalar ULS envelope review · no design check", "pass")
     with columns[1]:
         card(
-            f"GOVERNING |{component}|",
+            meta["metric"],
             f"{governing.get('absolute', 0.0):,.2f} {meta['unit']}",
             f"Signed value {governing.get('value', 0.0):,.2f} {meta['unit']}",
-            "pass",
+            "",
         )
     with columns[2]:
         card(
             "GOVERNING LOCATION",
             f"Cut {governing.get('sect_cut_num', '-')} · x={governing.get('distance_m', 0.0):.3f} m",
             str(governing.get("loc_type") or "-"),
-            "pass",
+            "",
         )
     with columns[3]:
         card(
@@ -9813,6 +9837,7 @@ def _render_fea_uls_component(payload: dict[str, Any], component: str) -> None:
             "warn" if "COMPONENT ENVELOPE" in str(governing.get("source") or "") else status["mode"],
         )
 
+    st.caption(_fea_dominant_source_text(payload, component))
     fig = uls_component_envelope_figure(
         payload,
         component,
@@ -9820,25 +9845,37 @@ def _render_fea_uls_component(payload: dict[str, Any], component: str) -> None:
     )
     show_plotly(fig)
     st.caption(
-        f"{meta['upper']} and {meta['lower']} are independent source-traced scalar extrema at each SectCutNum. "
-        "A vertical jump can occur where Before and After cuts share one distance. COMPONENT ENVELOPE values may be "
-        "non-simultaneous; this figure does not create a P–M3 or V2–T force pair and does not feed Sections 6–7."
+        f"{meta['upper']} and {meta['lower']} are source-traced scalar envelopes at each SectCutNum. "
+        "Envelope extrema may be non-simultaneous and do not create a P–M3 or V2–T design-force pair."
     )
 
     frame = component_envelope_frame(payload, component)
     if not frame.empty:
-        display = frame[[
-            "SectCutNum", "Distance", "LocType", "CandidateRows", "Lower", "LowerSource", "Upper", "UpperSource",
-            "GoverningValue", "GoverningSource",
+        compact = frame[[
+            "SectCutNum", "Distance", "LocType", "Lower", "Upper", "GoverningValue", "GoverningSource",
         ]].copy()
-        display.columns = [
-            "SectCutNum", "Distance (m)", "LocType", "Candidate rows",
-            f"{component} min ({meta['unit']})", "Min source",
-            f"{component} max ({meta['unit']})", "Max source",
-            f"Governing signed {component} ({meta['unit']})", "Governing source",
+        compact.columns = [
+            "SectCutNum", "Distance (m)", "LocType",
+            f"{meta['title']} min ({meta['unit']})",
+            f"{meta['title']} max ({meta['unit']})",
+            f"Governing signed {meta['title']} ({meta['unit']})",
+            "Governing source",
         ]
         st.markdown(f"#### {meta['title']} scalar envelope table")
-        st.dataframe(display, width="stretch", hide_index=True, height=540)
+        st.dataframe(compact, width="stretch", hide_index=True, height=430)
+
+        if _trace_toggle(f"Detailed {meta['title']} scalar envelope / QA", default=False):
+            detailed = frame[[
+                "SectCutNum", "Distance", "LocType", "CandidateRows", "Lower", "LowerSource", "Upper", "UpperSource",
+                "GoverningValue", "GoverningSource",
+            ]].copy()
+            detailed.columns = [
+                "SectCutNum", "Distance (m)", "LocType", "Candidate rows",
+                f"{meta['title']} min ({meta['unit']})", "Min source",
+                f"{meta['title']} max ({meta['unit']})", "Max source",
+                f"Governing signed {meta['title']} ({meta['unit']})", "Governing source",
+            ]
+            st.dataframe(detailed, width="stretch", hide_index=True, height=540)
 
     if _trace_toggle(f"{meta['title']} raw ULS source rows / QA", default=False):
         raw = pd.DataFrame(payload.get("records", []))
@@ -9862,38 +9899,33 @@ def _render_fea_uls_force_review() -> None:
     st.markdown(
         f'<div class="note-box"><b>ULS force review:</b> {escape(str(payload.get("filename") or "-"))} · '
         f'{int(summary.get("sect_cuts", 0))} section cuts · {int(summary.get("output_cases", 0))} output cases · '
-        f'{escape(_fea_semantics_case_display(payload))}. Select a force subpage for a full-span source-traced chart.</div>',
+        f'{escape(_fea_semantics_case_display(payload))}. Select a force view for a full-span source-traced chart.</div>',
         unsafe_allow_html=True,
     )
-    labels = [
-        "ULS Summary",
-        "5.2.1 Axial Force P",
-        "5.2.2 Vertical Shear V2",
-        "5.2.3 Torsion T",
-        "5.2.4 Bending Moment M3",
-    ]
+    view_labels = {
+        "summary": "Summary",
+        "P": "P (Axial)",
+        "V2": "V2 (Vy)",
+        "T": "T (Torsion)",
+        "M3": "M3 (Mx)",
+    }
+    if st.session_state.get("fea_uls_force_review_subpage") not in view_labels:
+        st.session_state.fea_uls_force_review_subpage = "summary"
     selected = st.radio(
         "ULS force review subpage",
-        labels,
+        list(view_labels),
         horizontal=True,
+        format_func=lambda key: view_labels[key],
         label_visibility="collapsed",
         key="fea_uls_force_review_subpage",
     )
-    st.markdown(
-        f'<div class="note-box"><b>5.2 ULS Force Review:</b> Active subpage = {escape(selected)}. '
-        'Charts are source-review figures only and preserve scalar-envelope semantics.</div>',
-        unsafe_allow_html=True,
-    )
-    if selected == "ULS Summary":
+    active_title = "ULS Summary" if selected == "summary" else f"{FORCE_COMPONENT_META[selected]['section']} {FORCE_COMPONENT_META[selected]['title']}"
+    st.caption(f"Active review: {active_title} · source-review only; scalar-envelope semantics are preserved.")
+    st.markdown(_fea_axis_convention_html(), unsafe_allow_html=True)
+    if selected == "summary":
         _render_fea_uls_summary(payload)
-    elif selected.endswith("P"):
-        _render_fea_uls_component(payload, "P")
-    elif selected.endswith("V2"):
-        _render_fea_uls_component(payload, "V2")
-    elif selected.endswith("T"):
-        _render_fea_uls_component(payload, "T")
     else:
-        _render_fea_uls_component(payload, "M3")
+        _render_fea_uls_component(payload, selected)
 
 
 def _render_fea_stage_header(stage: str, payload: dict[str, Any]) -> bool:
@@ -9930,7 +9962,7 @@ def _render_fea_envelope_stage(stage: str, *, default_components: list[str]) -> 
         return
     st.markdown(
         '<div class="warn-box"><b>Envelope semantics:</b> rows labelled <b>COMPONENT ENVELOPE</b> are CSiBridge '
-        'Max/Min component output; P, V2, T, and M3 in the same row are not assumed simultaneous. '
+        'Max/Min component output; P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) in the same row are not assumed simultaneous. '
         'The compact table contains separate scalar extrema with separate sources. <b>Sections 6–8 are not yet connected</b> '
         'to this source package. A future design connection must either use verified SINGLE STATE rows, a conservative '
         'component-bound route, or a non-envelope CSiBridge export.</div>',
@@ -9938,8 +9970,8 @@ def _render_fea_envelope_stage(stage: str, *, default_components: list[str]) -> 
     )
 
     choices = {
-        "Flexure / axial scalar bounds (P, M3)": ["P", "M3"],
-        "Shear / torsion scalar bounds (V2, T)": ["V2", "T"],
+        "Flexure / axial scalar bounds — P (Axial), M3 (Mx)": ["P", "M3"],
+        "Shear / torsion scalar bounds — V2 (Vy), T (Torsion)": ["V2", "T"],
         "All scalar extrema": list(FORCE_COMPONENTS),
     }
     default_label = next((label for label, comps in choices.items() if comps == default_components), list(choices)[0])
@@ -9959,7 +9991,7 @@ def _render_fea_envelope_stage(stage: str, *, default_components: list[str]) -> 
         raw = pd.DataFrame(payload.get("records", []))
         st.caption(
             f"Raw source rows retained: {len(raw):,}. SourceState identifies SINGLE STATE versus COMPONENT ENVELOPE. "
-            "No synthetic P-M3 or V2-T pairing is created from separate extrema."
+            "No synthetic P (Axial)–M3 (Mx) or V2 (Vy)–T (Torsion) pairing is created from separate extrema."
         )
         st.dataframe(raw, width="stretch", hide_index=True, height=620)
 
@@ -9970,7 +10002,7 @@ def _render_transfer_stage() -> None:
         return
     st.markdown(
         '<div class="note-box"><b>Transfer-stage hard gate:</b> the accepted source has exactly one OutputCase, '
-        'one row per SectCutNum, blank StepType, and SINGLE STATE semantics. P, V2, T, and M3 in each row are one '
+        'one row per SectCutNum, blank StepType, and SINGLE STATE semantics. P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) in each row are one '
         'traceable simultaneous Transfer-stage force vector.</div>',
         unsafe_allow_html=True,
     )
@@ -9978,7 +10010,7 @@ def _render_transfer_stage() -> None:
     if not records.empty:
         columns = ["SectCutNum", "Distance", "LocType", "OutputCase", "SourceState", "P", "V2", "T", "M3"]
         display = records[columns].copy()
-        display.columns = ["SectCutNum", "Distance (m)", "LocType", "OutputCase", "Source semantics", "P (kN)", "V2 (kN)", "T (kN·m)", "M3 (kN·m)"]
+        display.columns = ["SectCutNum", "Distance (m)", "LocType", "OutputCase", "Source semantics", "P (Axial) (kN)", "V2 (Vy) (kN)", "T (Torsion) (kN·m)", "M3 (Mx) (kN·m)"]
         st.dataframe(display, width="stretch", hide_index=True, height=620)
     st.markdown("#### Global transfer-stage extrema")
     show_engineering_table(_fea_global_extrema_frame(payload))
@@ -9986,17 +10018,17 @@ def _render_transfer_stage() -> None:
 
 def _render_fea_import_hub() -> None:
     st.markdown(
-        '<div class="note-box"><b>FEA.5B source policy:</b> upload separate CSiBridge <b>ULS</b>, '
+        '<div class="note-box"><b>FEA.5B1 source policy:</b> upload separate CSiBridge <b>ULS</b>, '
         '<b>Transfer Stage</b>, and <b>Final Service SLS</b> Bridge Object Forces workbooks. This page validates and '
         'stores source data only; Sections 6–8 are not yet connected.</div>',
         unsafe_allow_html=True,
     )
     with st.expander("Source import and envelope policy", expanded=False):
         st.markdown(
-            "The importer retains P, V2, T, M3, SectCutNum, Distance, Before/After identity, OutputCase, "
+            "The importer retains source fields P, V2, T, M3, SectCutNum, Distance, Before/After identity, OutputCase, "
             "StepType, source semantics, filename, and SHA-256. SINGLE STATE rows preserve one simultaneous "
             "force vector. COMPONENT ENVELOPE rows are component-wise Max/Min output and must not be interpreted "
-            "as one simultaneous P–V2–T–M3 state."
+            "as one simultaneous source-force state. The app displays P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) while retaining the original field names for audit traceability."
         )
     specs = [
         ("uls", "ULS forces workbook"),
