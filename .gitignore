@@ -1,0 +1,25 @@
+# Python cache / bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test / tool cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Streamlit local config/cache
+.streamlit/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

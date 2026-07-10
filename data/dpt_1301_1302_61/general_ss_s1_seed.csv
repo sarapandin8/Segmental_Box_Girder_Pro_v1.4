@@ -1,0 +1,5 @@
+province_th,district_th,Ss,S1,region,source_standard,source_table,source_page,source_note
+สงขลา,สะเดา,0.079,0.084,General Thailand,DPT 1301/1302-61,Table 1.4-1,p.20,Extracted from uploaded standard page showing Songkhla districts
+ขอนแก่น,เมืองขอนแก่น,0.053,0.030,General Thailand,DPT 1301/1302-61,Table 1.4-1,p.12,Extracted from uploaded standard page showing Khon Kaen districts
+หนองคาย,เมืองหนองคาย,0.196,0.048,General Thailand,DPT 1301/1302-61,Table 1.4-1,p.21,Extracted from uploaded standard page showing Nong Khai districts
+BG40 Baseline,BG40 Report Values,0.176,0.045,Project baseline,BG40 R10 / DPT 1301/1302-61,Report Chapter 1,p.9,Preserved to reproduce BG40 report seismic calculation

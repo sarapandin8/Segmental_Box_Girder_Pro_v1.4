@@ -1,0 +1,5 @@
+preset_key,preset_label,I_value,source_reference,note
+ordinary,1.00 — Ordinary / normal project basis,1.00,Project/DPT importance factor selection,Use only where owner/project criteria permit ordinary importance.
+bg40_default,1.25 — Important / BG40 project default,1.25,BG40 report project basis,Default currently used by BG40 EQ calculation.
+critical,1.50 — Critical / emergency route basis,1.50,Project/DPT importance factor selection,Use for critical route or owner-required high importance basis.
+manual,User override,NaN,User override,Manual value must be justified and traceable in report.

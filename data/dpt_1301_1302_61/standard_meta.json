@@ -1,0 +1,11 @@
+{
+  "standard": "DPT 1301/1302-61",
+  "edition": "ฉบับปรับปรุงครั้งที่ 1",
+  "year_be": 2564,
+  "source_file": "มยผ. 1301-61 มาตรฐานการออกแบบอาคารต้านทานแรงสั่นสะเทือนแผ่นดินไหว.pdf",
+  "database_status": "M3B curated database from uploaded standard: general district Ss/S1 table, Fa/Fv, Bangkok Basin zone map and equivalent-static zone spectra, and seismic design category tables.",
+  "general_table_rows": 816,
+  "general_table_provinces": 70,
+  "bangkok_zone_rows": 41,
+  "important_note": "DPT 1301/1302-61 is a building seismic design standard. In this bridge app it is used as the Thai project seismic parameter basis, not as a bridge-specific seismic code."
+}

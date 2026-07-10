@@ -1,0 +1,8 @@
+﻿data_file,section,source,pages,description
+general_ss_s1_by_district.csv,1.4.1,Table 1.4-1,PDF pages 26-36 / standard pages 12-22,Ss and S1 by province/district for general Thailand workflow
+fa_table_1_4_2.csv,1.4.3,Table 1.4-2,PDF page 37 / standard page 23,Fa by soil class and Ss
+fv_table_1_4_3.csv,1.4.3,Table 1.4-3,PDF page 38 / standard page 24,Fv by soil class and S1
+bangkok_basin_zone_map.csv,1.4.5.2,Figure 1.4-5,PDF page 41 / standard page 27,Bangkok Basin zone routing map
+bangkok_equiv_static_2p5_table_1_4_4.csv,1.4.5.2,Table 1.4-4,PDF page 46 / standard page 32,"Bangkok Basin equivalent-static design spectrum, damping 2.5%"
+bangkok_equiv_static_5p0_table_1_4_5.csv,1.4.5.2,Table 1.4-5,PDF page 46 / standard page 32,"Bangkok Basin equivalent-static design spectrum, damping 5.0%"
+seismic_design_category_tables_1_6.csv,1.6,Tables 1.6-1 and 1.6-2,PDF pages 49-50 / standard pages 35-36,Seismic design category ก/ข/ค/ง

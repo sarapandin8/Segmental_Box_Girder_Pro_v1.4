@@ -1,0 +1,8 @@
+substructure_key,substructure_label,critical,essential,other,source_reference,note
+wall_type_pier_larger_dimension,Wall-type pier — larger dimension,1.5,1.5,2.0,AASHTO LRFD 2020 Table 3.10.7.1-1,Use for wall-type piers where larger dimension governs classification.
+rc_pile_bent_vertical_piles,RC pile bent — vertical piles only,1.5,2.0,3.0,AASHTO LRFD 2020 Table 3.10.7.1-1,Reinforced concrete pile bent with vertical piles only.
+rc_pile_bent_batter_piles,RC pile bent — with batter piles,1.5,1.5,2.0,AASHTO LRFD 2020 Table 3.10.7.1-1,Reinforced concrete pile bent with batter piles.
+single_column_or_pier,Single column / single pier,1.5,2.0,3.0,AASHTO LRFD 2020 Table 3.10.7.1-1,Use for single-column pier or single pier behavior.
+steel_composite_pile_bent_vertical_piles,Steel/composite pile bent — vertical piles only,1.5,3.5,5.0,AASHTO LRFD 2020 Table 3.10.7.1-1,Steel or composite steel-concrete pile bent with vertical piles only.
+steel_composite_pile_bent_batter_piles,Steel/composite pile bent — with batter piles,1.5,2.0,3.0,AASHTO LRFD 2020 Table 3.10.7.1-1,Steel or composite steel-concrete pile bent with batter piles.
+multiple_column_bent,Multiple-column bent,1.5,3.5,5.0,AASHTO LRFD 2020 Table 3.10.7.1-1,Use for multiple-column bent systems.

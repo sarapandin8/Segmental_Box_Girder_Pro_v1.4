@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600">
+  <rect width="1200" height="600" fill="#ffffff"/>
+  <style>
+    .lbl { font-family: Arial, Helvetica, sans-serif; font-size: 22px; font-weight: 700; fill: #000000; letter-spacing: .4px; }
+    .lbl-sm { font-family: Arial, Helvetica, sans-serif; font-size: 18px; font-weight: 700; fill: #000000; }
+    .dim { font-family: Georgia, 'Times New Roman', serif; font-size: 32px; font-style: italic; font-weight: 700; fill: #000000; }
+  </style>
+  
+  <!-- Layered rock strata -->
+  <polygon points="0,345 150,375 240,405 320,435 400,475 460,515 540,545 600,565 660,545 740,515 800,475 880,435 960,405 1050,375 1200,345 1200,600 0,600" fill="#8b6a4a" stroke="#000" stroke-width="1" stroke-linejoin="round"/>
+  <polygon points="0,300 150,330 240,360 320,390 400,430 460,470 540,500 600,520 660,500 740,470 800,430 880,390 960,360 1050,330 1200,300 1200,345 1050,375 960,405 880,435 800,475 740,515 660,545 600,565 540,545 460,515 400,475 320,435 240,405 150,375 0,345" fill="#a67c52" stroke="#000" stroke-width="1" stroke-linejoin="round"/>
+  <polygon points="0,255 150,285 240,315 320,345 400,385 460,425 540,455 600,475 660,455 740,425 800,385 880,345 960,315 1050,285 1200,255 1200,300 1050,330 960,360 880,390 800,430 740,470 660,500 600,520 540,500 460,470 400,430 320,390 240,360 150,330 0,300" fill="#b9986b" stroke="#000" stroke-width="1" stroke-linejoin="round"/>
+  <polygon points="0,210 150,240 240,270 320,300 400,340 460,380 540,410 600,430 660,410 740,380 800,340 880,300 960,270 1050,240 1200,210 1200,255 1050,285 960,315 880,345 800,385 740,425 660,455 600,475 540,455 460,425 400,385 320,345 240,315 150,285 0,255" fill="#d2b48c" stroke="#000" stroke-width="1" stroke-linejoin="round"/>
+  
+  <!-- Existing gorge level outline -->
+  <polyline points="0,210 150,240 240,270 320,300 400,340 460,380 540,410 600,430 660,410 740,380 800,340 880,300 960,270 1050,240 1200,210" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Piers -->
+  <g fill="#e8e8e8" stroke="#000" stroke-width="2">
+    <!-- Pier 1 left short -->
+    <rect x="227" y="158" width="26" height="107"/>
+    <rect x="208" y="265" width="64" height="14" fill="#d5d5d5"/>
+    <!-- Pier 2 left tall -->
+    <rect x="447" y="158" width="26" height="217"/>
+    <rect x="428" y="375" width="64" height="14" fill="#d5d5d5"/>
+    <!-- Pier 3 right tall -->
+    <rect x="727" y="158" width="26" height="217"/>
+    <rect x="708" y="375" width="64" height="14" fill="#d5d5d5"/>
+    <!-- Pier 4 right short -->
+    <rect x="947" y="158" width="26" height="107"/>
+    <rect x="928" y="265" width="64" height="14" fill="#d5d5d5"/>
+  </g>
+
+  <!-- Bridge deck -->
+  <rect x="70" y="130" width="1060" height="28" fill="#f2f2f2" stroke="#000" stroke-width="2.5"/>
+  <line x1="70" y1="144" x2="1130" y2="144" stroke="#000" stroke-width="1" opacity="0.3"/>
+
+  <!-- Center dimension Ze -->
+  <g stroke="#000" stroke-width="1.5" fill="none">
+    <line x1="600" y1="142" x2="600" y2="418"/>
+  </g>
+  <polygon points="600,130 594,144 606,144" fill="#000"/>
+  <polygon points="600,430 594,416 606,416" fill="#000"/>
+  <rect x="616" y="249" width="60" height="40" fill="#ffffff"/>
+  <text x="620" y="285" class="dim">Z<tspan baseline-shift="sub" font-size="20">e</tspan></text>
+
+  <!-- Top label -->
+  <rect x="48" y="34" width="350" height="30" fill="#ffffff"/>
+  <text x="52" y="60" class="lbl">FINISHED BRIDGE DECK GRADE</text>
+  <path d="M270 66 H 310 L 298 130" fill="none" stroke="#000" stroke-width="1.5"/>
+
+  <!-- Bottom label -->
+  <rect x="816" y="469" width="290" height="30" fill="#ffffff"/>
+  <text x="820" y="495" class="lbl">EXISTING GORGE LEVEL</text>
+  <line x1="810" y1="496" x2="612" y2="436" stroke="#000" stroke-width="1.5"/>
+
+  <!-- Foundation label -->
+  <rect x="88" y="388" width="258" height="26" fill="#ffffff"/>
+  <text x="342" y="410" class="lbl-sm" text-anchor="end">COLUMN FOUNDATION TYP.</text>
+  <line x1="350" y1="405" x2="428" y2="382" stroke="#000" stroke-width="1.2"/>
+</svg>

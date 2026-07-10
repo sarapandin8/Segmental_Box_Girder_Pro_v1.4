@@ -1,0 +1,25 @@
+﻿basis,variable,lower_inclusive_g,upper_exclusive_g,importance_group,category,source_table,source_page_pdf,source_standard_page
+SDS,SDS,0.0,0.167,I_or_II,ก,Table 1.6-1,49,35
+SDS,SDS,0.0,0.167,III,ก,Table 1.6-1,49,35
+SDS,SDS,0.0,0.167,IV,ก,Table 1.6-1,49,35
+SDS,SDS,0.167,0.33,I_or_II,ข,Table 1.6-1,49,35
+SDS,SDS,0.167,0.33,III,ข,Table 1.6-1,49,35
+SDS,SDS,0.167,0.33,IV,ค,Table 1.6-1,49,35
+SDS,SDS,0.33,0.5,I_or_II,ค,Table 1.6-1,49,35
+SDS,SDS,0.33,0.5,III,ค,Table 1.6-1,49,35
+SDS,SDS,0.33,0.5,IV,ง,Table 1.6-1,49,35
+SDS,SDS,0.5,,I_or_II,ง,Table 1.6-1,49,35
+SDS,SDS,0.5,,III,ง,Table 1.6-1,49,35
+SDS,SDS,0.5,,IV,ง,Table 1.6-1,49,35
+SD1,SD1,0.0,0.067,I_or_II,ก,Table 1.6-2,49,35
+SD1,SD1,0.0,0.067,III,ก,Table 1.6-2,49,35
+SD1,SD1,0.0,0.067,IV,ก,Table 1.6-2,49,35
+SD1,SD1,0.067,0.133,I_or_II,ข,Table 1.6-2,49,35
+SD1,SD1,0.067,0.133,III,ข,Table 1.6-2,49,35
+SD1,SD1,0.067,0.133,IV,ค,Table 1.6-2,49,35
+SD1,SD1,0.133,0.2,I_or_II,ค,Table 1.6-2,49,35
+SD1,SD1,0.133,0.2,III,ค,Table 1.6-2,49,35
+SD1,SD1,0.133,0.2,IV,ง,Table 1.6-2,49,35
+SD1,SD1,0.2,,I_or_II,ง,Table 1.6-2,49,35
+SD1,SD1,0.2,,III,ง,Table 1.6-2,49,35
+SD1,SD1,0.2,,IV,ง,Table 1.6-2,49,35

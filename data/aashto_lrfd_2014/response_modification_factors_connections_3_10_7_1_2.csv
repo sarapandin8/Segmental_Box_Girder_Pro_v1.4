@@ -1,0 +1,5 @@
+connection_key,connection_label,r_value,source_reference,note
+superstructure_to_abutment,Superstructure to abutment,0.8,AASHTO LRFD 2020 Table 3.10.7.1-2,Connection R factor applies to all operational categories.
+expansion_joints_within_span,Expansion joints within a span of the superstructure,0.8,AASHTO LRFD 2020 Table 3.10.7.1-2,Connection R factor applies to all operational categories.
+column_pier_pile_bent_to_cap_or_superstructure,Columns/piers/pile bents to cap beam or superstructure,1.0,AASHTO LRFD 2020 Table 3.10.7.1-2,Connection R factor applies to all operational categories.
+column_or_pier_to_foundation,Columns or piers to foundations,1.0,AASHTO LRFD 2020 Table 3.10.7.1-2,Connection R factor applies to all operational categories.
