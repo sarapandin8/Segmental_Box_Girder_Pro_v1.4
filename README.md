@@ -1,35 +1,33 @@
-# Segmental Box Girder Pro — COMMERCIAL.FEA.5A
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5B
 
-This milestone adds **COMMERCIAL.FEA.5A — Source-Safe Three-Stage CSiBridge Force Import Hub** on the accepted `TENDON.2.4Q` baseline.
+This milestone adds **COMMERCIAL.FEA.5B — ULS Force Review Charts and Nested Subpages** on the accepted `COMMERCIAL.FEA.5A` source-safe import hub.
 
 ## Scope implemented
 
-- Adds separate `.xlsx` sources for ULS, Transfer Stage, and Final Service SLS Bridge Object Forces.
-- Imports only the actions required by this app: `P`, `V2`, `T`, and `M3`, while preserving `BridgeObj`, `SectCutNum`, `Distance`, `LocType`, `OutputCase`, `CaseType`, `StepType`, and source row.
-- Classifies every source row as either `SINGLE STATE` or `COMPONENT ENVELOPE`. Max/Min component-envelope rows are never described as simultaneous force vectors.
-- Builds one compact scalar-envelope row per `SectCutNum`, with separate source trace for every component minimum and maximum.
-- Enforces the Transfer Stage contract as a hard gate: exactly one OutputCase, one row per `SectCutNum`, blank StepType, and `SINGLE STATE` semantics.
-- Requires the three stages to match the active `BridgeObj` and the same `SectCutNum` / `Distance` / `LocType` station map.
-- Preserves the previously validated source if a replacement workbook is rejected and labels the failed attempt explicitly.
-- Persists only engineering-use Program Control metadata (`ProgramName`, `Version`, `CurrUnits`, `BridgeCode`, `ConcCode`); license and machine metadata are excluded.
-- Adds Project Validation / Report QA issue codes for missing sources, span mismatch, station mismatch, downstream-not-connected state, and stale connected results.
-- Keeps Sections 6–8 explicitly **NOT YET CONNECTED**. Their existing BG40/keyed demand values are not silently replaced by the imported source package.
-- Adds a read-only Section 5 source snapshot to Report / QA.
-
-## Verified project fixtures
-
-- ULS: 2,560 raw rows, 80 section cuts, 18 output cases, 32 rows per cut.
-- Transfer Stage: 80 raw rows, 80 section cuts, one single-state row per cut.
-- Final Service SLS: 720 raw rows, 80 section cuts, 7 output cases, 9 rows per cut.
-- Cross-stage station map: 80 matching section-cut identities for `B2_SPAN1`.
+- Renames the Section 5 page consistently to **5 FEA Results**.
+- Adds **5.2 ULS Force Review** with a second navigation layer:
+  - ULS Summary
+  - 5.2.1 Axial Force P
+  - 5.2.2 Vertical Shear V2
+  - 5.2.3 Torsion T
+  - 5.2.4 Bending Moment M3
+- Adds commercial full-width Plotly charts for each ULS force component using the accepted Concrete Section Pro card-and-chart language.
+- Plots source-traced upper and lower scalar envelopes over the complete span, preserving Before/After section-cut discontinuities.
+- Marks the global maximum-absolute governing point and exposes SectCutNum, Distance, LocType, OutputCase, StepType, SourceState, and source row in hover/source cards.
+- Keeps `COMPONENT ENVELOPE` semantics explicit: the charts do not create simultaneous P–M3 or V2–T pairs and do not feed Sections 6–7.
+- Adds a ULS summary dashboard and governing scalar-force trace table without combining unlike units on one chart.
+- Replaces vague `MIXED` source semantics in the import table with explicit case counts such as `14 ENVELOPE + 4 SINGLE`.
+- Aligns the three import columns by removing transient success banners; active source cards remain the authoritative upload status.
+- Shortens the visible import policy note and moves the detailed source-envelope policy into an expander.
+- Preserves all FEA.5A source gates, Transfer single-state validation, rejected-replacement behavior, station-map QA, Project JSON persistence, and the honest downstream `NOT YET CONNECTED` status.
 
 ## Important limitation
 
-`COMPONENT ENVELOPE` Max/Min output may not preserve simultaneous `P-M3` or `V2-T` pairs. This milestone validates and stores the FEA source package only. A later, separately reviewed milestone must define the conservative/non-envelope downstream design route before Sections 6–8 consume these results.
+ULS Max/Min output may be component-wise and non-simultaneous. FEA.5B is a source-review and visualization milestone only. Sections 6–7 continue using the existing BG40/keyed demands until a later reviewed connection milestone defines the downstream force-selection method.
 
 Schema:
 
-- `0.5.1-commercial-fea5a-source-safe-three-stage-import-hub`
+- `0.5.2-commercial-fea5b-uls-force-review-charts`
 
 # Segmental Box Girder Pro — COMMERCIAL.TENDON.2.4Q
 

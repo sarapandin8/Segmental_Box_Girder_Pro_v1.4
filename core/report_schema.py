@@ -59,10 +59,10 @@ WORKSPACES = [
     {
         "id": "fea_results",
         "label": "5 FEA Results",
-        "title": "5 Analysis Results",
+        "title": "5 FEA Results",
         "subpages": [
             "5.1 Import / Data Hub",
-            "5.2 ULS Envelope",
+            "5.2 ULS Force Review",
             "5.3 Transfer Stage",
             "5.4 Final Service SLS",
             "5.5 QA / Source Trace",

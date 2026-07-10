@@ -14,6 +14,11 @@ from core.fea_results import (
     source_package_gate,
     stage_source_status,
 )
+from visualization.fea_figures import (
+    component_envelope_frame,
+    governing_component_envelope,
+    uls_component_envelope_figure,
+)
 
 
 def _workbook_bytes(rows: list[list[object]], *, include_step: bool = True) -> bytes:
@@ -161,3 +166,39 @@ def test_source_package_gate_requires_three_ready_sources_and_station_match():
     ready = source_package_gate({"uls": base, "transfer": transfer, "service": service}, "B2_SPAN1")
     assert ready["ready"] is True
     assert ready["status"] == "READY"
+
+
+def test_fea5b_component_review_frame_governing_point_and_chart_style():
+    rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "U1", "Combination", "Max", -10, 30, -5, 100],
+        ["B2_SPAN1", 1, 0.0, "After", "U1", "Combination", "Min", -40, -20, 8, 50],
+        ["B2_SPAN1", 1, 0.0, "After", "U2", "Combination", "Max", -5, 10, 2, 120],
+        ["B2_SPAN1", 1, 0.0, "After", "U2", "Combination", "Min", -25, -35, -9, 40],
+        ["B2_SPAN1", 2, 1.0, "Before", "U1", "Combination", "Max", -12, 22, 3, 90],
+        ["B2_SPAN1", 2, 1.0, "Before", "U1", "Combination", "Min", -30, -18, -4, 45],
+        ["B2_SPAN1", 2, 1.0, "Before", "U2", "Combination", "Max", -9, 19, 2, 95],
+        ["B2_SPAN1", 2, 1.0, "Before", "U2", "Combination", "Min", -28, -24, -6, 42],
+    ]
+    payload = read_csibridge_force_workbook(_workbook_bytes(rows), filename="uls.xlsx", stage="uls")
+    frame = component_envelope_frame(payload, "M3")
+    assert list(frame["SectCutNum"]) == [1, 2]
+    assert frame.loc[0, "Upper"] == 120.0
+    assert "U2 / Max" in frame.loc[0, "UpperSource"]
+    governing = governing_component_envelope(payload, "M3")
+    assert governing["absolute"] == 120.0
+    assert governing["sect_cut_num"] == 1
+    assert governing["side"] == "MAX"
+
+    fig = uls_component_envelope_figure(payload, "M3", bridge_object="B2_SPAN1")
+    assert len(fig.data) == 3
+    assert fig.data[0].name == "M3 max"
+    assert fig.data[1].line.dash == "dash"
+    assert fig.data[2].name == "Governing |M3|"
+    assert fig.layout.title.x == 0.5
+    assert fig.layout.legend.y < 0
+    assert "CSiBridge scalar component envelope" in fig.layout.title.text
+
+
+def test_fea5b_rejects_unknown_force_component():
+    with pytest.raises(ValueError, match="Unsupported FEA force component"):
+        component_envelope_frame({"envelopes": []}, "V3")

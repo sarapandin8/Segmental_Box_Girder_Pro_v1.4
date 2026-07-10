@@ -121,6 +121,12 @@ from core.wind_regions import (
     wind_province_options,
 )
 from visualization.figure_system import figure_view_badge_text, plotly_config_for_view_mode
+from visualization.fea_figures import (
+    FORCE_COMPONENT_META,
+    component_envelope_frame,
+    governing_component_envelope,
+    uls_component_envelope_figure,
+)
 from visualization.section_figures import PLOTLY_SECTION_CONFIG, section_polygon_figure
 from visualization.tendon_figures import (
     PLOTLY_TENDON_CONFIG,
@@ -9631,10 +9637,6 @@ def _sync_fea_stage_upload(uploaded: Any, stage: str) -> None:
             "previous_source_retained": False,
             "message": "Source accepted and activated.",
         }
-        st.success(
-            f"Imported {STAGE_LABELS[stage]}: {payload['summary']['rows']:,} raw rows / "
-            f"{payload['summary']['sect_cuts']} section cuts."
-        )
     except FEAResultImportError as exc:
         retained = bool(isinstance(current, dict) and current.get("valid"))
         attempts[stage] = {
@@ -9703,6 +9705,195 @@ def _fea_semantics_label(payload: dict[str, Any]) -> tuple[str, str, str]:
     note = f"Single-state rows {single_rows:,} · component-envelope rows {envelope_rows:,}"
     mode = "pass" if envelope_rows == 0 else "warn"
     return overall, note, mode
+
+
+def _fea_semantics_case_display(payload: dict[str, Any]) -> str:
+    """Explain MIXED semantics with explicit case counts instead of a vague label."""
+    envelope_cases = 0
+    single_cases = 0
+    for row in payload.get("case_summary", []) if isinstance(payload, dict) else []:
+        semantics = str(row.get("Source semantics") or "")
+        if SOURCE_STATE_COMPONENT_ENVELOPE in semantics:
+            envelope_cases += 1
+        if SOURCE_STATE_SINGLE in semantics:
+            single_cases += 1
+    parts: list[str] = []
+    if envelope_cases:
+        parts.append(f"{envelope_cases} ENVELOPE")
+    if single_cases:
+        parts.append(f"{single_cases} SINGLE")
+    return " + ".join(parts) or "-"
+
+
+def _render_fea_uls_summary(payload: dict[str, Any]) -> None:
+    summary = payload.get("summary", {})
+    cards = st.columns(4)
+    for column, component in zip(cards, FORCE_COMPONENTS):
+        meta = FORCE_COMPONENT_META[component]
+        governing = governing_component_envelope(payload, component)
+        with column:
+            if governing:
+                card(
+                    f"GOVERNING |{component}|",
+                    f"{governing['absolute']:,.2f} {meta['unit']}",
+                    f"Signed {governing['value']:,.2f} · Cut {governing['sect_cut_num']} · x={governing['distance_m']:.3f} m",
+                    "pass",
+                )
+            else:
+                card(f"GOVERNING |{component}|", "NOT AVAILABLE", "No scalar envelope source is available.", "warn")
+
+    st.markdown(
+        '<div class="warn-box"><b>ULS source semantics:</b> this summary compares scalar extrema only. '
+        'Component-envelope values can be non-simultaneous; the four governing values above are not one force vector. '
+        '<b>Sections 6–7 remain disconnected</b> from this review page.</div>',
+        unsafe_allow_html=True,
+    )
+    rows: list[list[Any]] = []
+    for component in FORCE_COMPONENTS:
+        meta = FORCE_COMPONENT_META[component]
+        governing = governing_component_envelope(payload, component)
+        if not governing:
+            continue
+        rows.append(
+            [
+                meta["title"],
+                f"{governing['absolute']:,.3f}",
+                f"{governing['value']:,.3f}",
+                meta["unit"],
+                governing["sect_cut_num"],
+                f"{governing['distance_m']:.3f}",
+                governing["loc_type"],
+                governing["source"],
+            ]
+        )
+    st.markdown("#### Governing scalar-force summary")
+    show_engineering_table(
+        pd.DataFrame(
+            rows,
+            columns=["Force", "Maximum absolute", "Signed value", "Unit", "SectCutNum", "x (m)", "LocType", "Source trace"],
+        )
+    )
+    cols = st.columns(4)
+    with cols[0]:
+        card("ULS SOURCE", "READY", str(payload.get("filename") or "-"), "pass")
+    with cols[1]:
+        card("SECTION CUTS", str(int(summary.get("sect_cuts", 0))), f"x = {float(summary.get('distance_min_m', 0.0)):.3f}–{float(summary.get('distance_max_m', 0.0)):.3f} m", "pass")
+    with cols[2]:
+        card("OUTPUT CASES", str(int(summary.get("output_cases", 0))), _fea_semantics_case_display(payload), "pass")
+    with cols[3]:
+        card("DOWNSTREAM", "NOT YET CONNECTED", "Review-only source visualization", "warn")
+
+
+def _render_fea_uls_component(payload: dict[str, Any], component: str) -> None:
+    meta = FORCE_COMPONENT_META[component]
+    governing = governing_component_envelope(payload, component)
+    status = stage_source_status(payload, str(D.get("project", {}).get("bridge_object", "")))
+    columns = st.columns(4)
+    with columns[0]:
+        card("FORCE REVIEW STATUS", "SOURCE READY", "Scalar ULS envelope review · no design check", "pass")
+    with columns[1]:
+        card(
+            f"GOVERNING |{component}|",
+            f"{governing.get('absolute', 0.0):,.2f} {meta['unit']}",
+            f"Signed value {governing.get('value', 0.0):,.2f} {meta['unit']}",
+            "pass",
+        )
+    with columns[2]:
+        card(
+            "GOVERNING LOCATION",
+            f"Cut {governing.get('sect_cut_num', '-')} · x={governing.get('distance_m', 0.0):.3f} m",
+            str(governing.get("loc_type") or "-"),
+            "pass",
+        )
+    with columns[3]:
+        card(
+            "GOVERNING SOURCE",
+            f"{str(governing.get('source') or '-').split(' · ')[0]}",
+            str(governing.get("source") or "-").split(" · ", 1)[1] if " · " in str(governing.get("source") or "") else "Source-traced scalar extremum",
+            "warn" if "COMPONENT ENVELOPE" in str(governing.get("source") or "") else status["mode"],
+        )
+
+    fig = uls_component_envelope_figure(
+        payload,
+        component,
+        bridge_object=str(D.get("project", {}).get("bridge_object", "")),
+    )
+    show_plotly(fig)
+    st.caption(
+        f"{meta['upper']} and {meta['lower']} are independent source-traced scalar extrema at each SectCutNum. "
+        "A vertical jump can occur where Before and After cuts share one distance. COMPONENT ENVELOPE values may be "
+        "non-simultaneous; this figure does not create a P–M3 or V2–T force pair and does not feed Sections 6–7."
+    )
+
+    frame = component_envelope_frame(payload, component)
+    if not frame.empty:
+        display = frame[[
+            "SectCutNum", "Distance", "LocType", "CandidateRows", "Lower", "LowerSource", "Upper", "UpperSource",
+            "GoverningValue", "GoverningSource",
+        ]].copy()
+        display.columns = [
+            "SectCutNum", "Distance (m)", "LocType", "Candidate rows",
+            f"{component} min ({meta['unit']})", "Min source",
+            f"{component} max ({meta['unit']})", "Max source",
+            f"Governing signed {component} ({meta['unit']})", "Governing source",
+        ]
+        st.markdown(f"#### {meta['title']} scalar envelope table")
+        st.dataframe(display, width="stretch", hide_index=True, height=540)
+
+    if _trace_toggle(f"{meta['title']} raw ULS source rows / QA", default=False):
+        raw = pd.DataFrame(payload.get("records", []))
+        columns = ["SourceRow", "SectCutNum", "Distance", "LocType", "OutputCase", "StepType", "SourceState", component]
+        st.dataframe(raw[columns] if not raw.empty else raw, width="stretch", hide_index=True, height=620)
+
+
+def _render_fea_uls_force_review() -> None:
+    payload = _fea_stage_imports().get("uls", {})
+    active_span = str(D.get("project", {}).get("bridge_object", ""))
+    status = stage_source_status(payload, active_span)
+    if status["status"] != "READY":
+        st.markdown(
+            f'<div class="warn-box"><b>ULS force source:</b> {escape(status["note"])}</div>',
+            unsafe_allow_html=True,
+        )
+        st.info("Upload a conforming ULS source on 5.1 Import / Data Hub before reviewing force charts.")
+        return
+
+    summary = payload.get("summary", {})
+    st.markdown(
+        f'<div class="note-box"><b>ULS force review:</b> {escape(str(payload.get("filename") or "-"))} · '
+        f'{int(summary.get("sect_cuts", 0))} section cuts · {int(summary.get("output_cases", 0))} output cases · '
+        f'{escape(_fea_semantics_case_display(payload))}. Select a force subpage for a full-span source-traced chart.</div>',
+        unsafe_allow_html=True,
+    )
+    labels = [
+        "ULS Summary",
+        "5.2.1 Axial Force P",
+        "5.2.2 Vertical Shear V2",
+        "5.2.3 Torsion T",
+        "5.2.4 Bending Moment M3",
+    ]
+    selected = st.radio(
+        "ULS force review subpage",
+        labels,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="fea_uls_force_review_subpage",
+    )
+    st.markdown(
+        f'<div class="note-box"><b>5.2 ULS Force Review:</b> Active subpage = {escape(selected)}. '
+        'Charts are source-review figures only and preserve scalar-envelope semantics.</div>',
+        unsafe_allow_html=True,
+    )
+    if selected == "ULS Summary":
+        _render_fea_uls_summary(payload)
+    elif selected.endswith("P"):
+        _render_fea_uls_component(payload, "P")
+    elif selected.endswith("V2"):
+        _render_fea_uls_component(payload, "V2")
+    elif selected.endswith("T"):
+        _render_fea_uls_component(payload, "T")
+    else:
+        _render_fea_uls_component(payload, "M3")
 
 
 def _render_fea_stage_header(stage: str, payload: dict[str, Any]) -> bool:
@@ -9795,12 +9986,18 @@ def _render_transfer_stage() -> None:
 
 def _render_fea_import_hub() -> None:
     st.markdown(
-        '<div class="note-box"><b>FEA.5A source policy:</b> upload separate CSiBridge <b>ULS</b>, '
-        '<b>Transfer Stage</b>, and <b>Final Service SLS</b> Bridge Object Forces workbooks. The importer retains '
-        'P, V2, T, M3, section-cut identity, source semantics, filename, and SHA-256. This milestone validates and '
-        'stores the source package only; it does not silently replace the existing demands in Sections 6–8.</div>',
+        '<div class="note-box"><b>FEA.5B source policy:</b> upload separate CSiBridge <b>ULS</b>, '
+        '<b>Transfer Stage</b>, and <b>Final Service SLS</b> Bridge Object Forces workbooks. This page validates and '
+        'stores source data only; Sections 6–8 are not yet connected.</div>',
         unsafe_allow_html=True,
     )
+    with st.expander("Source import and envelope policy", expanded=False):
+        st.markdown(
+            "The importer retains P, V2, T, M3, SectCutNum, Distance, Before/After identity, OutputCase, "
+            "StepType, source semantics, filename, and SHA-256. SINGLE STATE rows preserve one simultaneous "
+            "force vector. COMPONENT ENVELOPE rows are component-wise Max/Min output and must not be interpreted "
+            "as one simultaneous P–V2–T–M3 state."
+        )
     specs = [
         ("uls", "ULS forces workbook"),
         ("transfer", "Transfer-stage forces workbook"),
@@ -9852,7 +10049,7 @@ def _render_fea_import_hub() -> None:
                 int(summary.get("rows", 0)),
                 int(summary.get("sect_cuts", 0)),
                 int(summary.get("output_cases", 0)),
-                semantics.get("overall", "-"),
+                _fea_semantics_case_display(payload),
                 latest_attempt,
                 status["status"],
             ]
@@ -9913,7 +10110,7 @@ def _render_fea_source_qa() -> None:
                 program.get("ConcCode", "-"),
                 int(summary.get("rows", 0)),
                 int(summary.get("sect_cuts", 0)),
-                semantics.get("overall", "-"),
+                _fea_semantics_case_display(payload),
                 status["status"],
             ]
         )
@@ -9940,8 +10137,8 @@ def page_fea_results(sub: str) -> None:
     st.subheader(get_workspace("5 FEA Results")["title"])
     if sub in {"5.1 Data Hub", "5.1 Import / Data Hub"}:
         _render_fea_import_hub()
-    elif sub == "5.2 ULS Envelope":
-        _render_fea_envelope_stage("uls", default_components=["P", "M3"])
+    elif sub in {"5.2 ULS Envelope", "5.2 ULS Force Review"}:
+        _render_fea_uls_force_review()
     elif sub == "5.3 Transfer Stage":
         _render_transfer_stage()
     elif sub in {"5.3 SLS Envelope", "5.4 Final Service SLS"}:
