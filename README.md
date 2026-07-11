@@ -1,3 +1,23 @@
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5C1
+
+This milestone adds **COMMERCIAL.FEA.5C1 — Transfer Signed-Governing Display Consistency** on the accepted `COMMERCIAL.FEA.5C` Transfer-stage review baseline.
+
+## Scope implemented
+
+- Keeps the governing-station selection rule unchanged: each Transfer component is still selected by maximum absolute magnitude.
+- Displays the signed governing source value as the primary value on Transfer Summary and component-review cards.
+- Moves the absolute magnitude to secondary supporting text so negative governing values agree visually with the plotted marker and curve.
+- Uses Transfer-specific chart legend and annotation labels without absolute-value bars: `Governing P (Axial)`, `Governing V2 (Vy)`, `Governing T (Torsion)`, and `Governing M3 (Mx)`.
+- Reorders the Transfer summary table to show `Signed governing value` before `Absolute magnitude`.
+- Applies the same signed-display rule to P, V2, T, and M3 while leaving the ULS scalar-envelope `Governing |...|` convention unchanged.
+- Retains `plotly==5.24.1` for Streamlit Cloud compatibility and keeps Sections 6–8 explicitly **NOT YET CONNECTED**.
+
+Schema:
+
+- `0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency`
+
+---
+
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5C
 
 This milestone adds **COMMERCIAL.FEA.5C — Transfer-Stage Simultaneous Force-Vector Review** on the accepted `COMMERCIAL.FEA.5B2` ULS-review baseline.

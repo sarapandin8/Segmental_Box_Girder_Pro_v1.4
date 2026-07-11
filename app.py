@@ -10017,9 +10017,9 @@ def _render_fea_transfer_summary(payload: dict[str, Any]) -> None:
         with column:
             if governing:
                 card(
-                    meta["metric"],
-                    f"{governing['absolute']:,.2f} {meta['unit']}",
-                    f"Signed {governing['value']:,.2f} · Cut {governing['sect_cut_num']} · x={governing['distance_m']:.4f} m",
+                    meta["transfer_metric"],
+                    f"{governing['value']:,.2f} {meta['unit']}",
+                    f"Absolute magnitude {governing['absolute']:,.2f} · Cut {governing['sect_cut_num']} · x={governing['distance_m']:.4f} m",
                     "",
                 )
             else:
@@ -10027,9 +10027,10 @@ def _render_fea_transfer_summary(payload: dict[str, Any]) -> None:
 
     st.markdown(
         '<div class="note-box"><b>Transfer-stage vector semantics:</b> every source row contains one simultaneous '
-        '<b>P (Axial)–V2 (Vy)–T (Torsion)–M3 (Mx)</b> force vector. The four governing cards can occur at different '
-        'section cuts and therefore are not one common vector. Open a component review to inspect the complete companion '
-        'vector at that component’s governing station. <b>Sections 6–8 remain disconnected</b> from this review page.</div>',
+        '<b>P (Axial)–V2 (Vy)–T (Torsion)–M3 (Mx)</b> force vector. Each governing component is selected by maximum '
+        'absolute magnitude, but its card and table retain the signed source value. The four governing cards can occur at '
+        'different section cuts and therefore are not one common vector. Open a component review to inspect the complete '
+        'companion vector at that component’s governing station. <b>Sections 6–8 remain disconnected</b> from this review page.</div>',
         unsafe_allow_html=True,
     )
     rows: list[list[Any]] = []
@@ -10040,8 +10041,8 @@ def _render_fea_transfer_summary(payload: dict[str, Any]) -> None:
             continue
         rows.append([
             meta["title"],
-            f"{governing['absolute']:,.3f}",
             f"{governing['value']:,.3f}",
+            f"{governing['absolute']:,.3f}",
             meta["unit"],
             governing["sect_cut_num"],
             f"{governing['distance_m']:.4f}",
@@ -10051,7 +10052,7 @@ def _render_fea_transfer_summary(payload: dict[str, Any]) -> None:
     st.markdown("#### Governing Transfer-stage component summary")
     show_engineering_table(pd.DataFrame(
         rows,
-        columns=["Force / app axis", "Maximum absolute", "Signed value", "Unit", "SectCutNum", "x (m)", "LocType", "Source trace"],
+        columns=["Force / app axis", "Signed governing value", "Absolute magnitude", "Unit", "SectCutNum", "x (m)", "LocType", "Source trace"],
     ))
     cols = st.columns(4)
     with cols[0]:
@@ -10072,9 +10073,9 @@ def _render_fea_transfer_component(payload: dict[str, Any], component: str) -> N
         card("FORCE REVIEW STATUS", "SOURCE READY", "SINGLE STATE Transfer review · no design check", "pass")
     with columns[1]:
         card(
-            meta["metric"],
-            f"{governing.get('absolute', 0.0):,.2f} {meta['unit']}",
-            f"Signed value {governing.get('value', 0.0):,.2f} {meta['unit']}",
+            meta["transfer_metric"],
+            f"{governing.get('value', 0.0):,.2f} {meta['unit']}",
+            f"Absolute magnitude {governing.get('absolute', 0.0):,.2f} {meta['unit']}",
             "",
         )
     with columns[2]:
@@ -10096,6 +10097,7 @@ def _render_fea_transfer_component(payload: dict[str, Any], component: str) -> N
     show_plotly(fig)
     st.caption(
         f"{meta['title']} is plotted from one validated SINGLE STATE row at each SectCutNum. "
+        "The governing station is selected by maximum absolute magnitude, while the card, marker, annotation, and table retain the signed source value. "
         "Hover exposes the simultaneous P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) companion actions. "
         "This source review does not yet feed Sections 6–8."
     )
@@ -10166,7 +10168,7 @@ def _render_transfer_stage() -> None:
 
 def _render_fea_import_hub() -> None:
     st.markdown(
-        '<div class="note-box"><b>FEA.5C source policy:</b> upload separate CSiBridge <b>ULS</b>, '
+        '<div class="note-box"><b>FEA.5C1 source policy:</b> upload separate CSiBridge <b>ULS</b>, '
         '<b>Transfer Stage</b>, and <b>Final Service SLS</b> Bridge Object Forces workbooks. This page validates and '
         'stores source data only; Sections 6–8 are not yet connected.</div>',
         unsafe_allow_html=True,

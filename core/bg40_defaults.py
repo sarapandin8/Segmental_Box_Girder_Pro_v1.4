@@ -6,7 +6,7 @@ calculation-engine inputs from M1. Internal UI units are kN, m, MPa, and mm.
 
 BG40_DEFAULT = {
     "meta": {
-        "schema_version": "0.5.5-commercial-fea5c-transfer-stage-simultaneous-force-review",
+        "schema_version": "0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
         "app_name": "Segmental Box Girder Pro",
         "dataset_status": "BG40 baseline loaded; AASHTO LRFD 2020 Section 5 governing concrete design basis and DPT seismic database active",
         "schema_note": "Report-driven workspace/subpage schema for commercial-grade QA, traceability, and future report export.",
@@ -286,7 +286,7 @@ BG40_DEFAULT = {
         "source_note": "Import CSiBridge tendon General / Vertical / Horizontal tables to generate layout figures, then explicitly adopt the tendon model before downstream use.",
     },
     "fea_results": {
-        "source_status": "FEA.5C three-stage CSiBridge import hub with ULS scalar-envelope review and Transfer-stage simultaneous-force-vector review; downstream design remains disconnected.",
+        "source_status": "FEA.5C1 three-stage CSiBridge review with signed Transfer-stage governing display consistency; downstream design remains disconnected.",
         "axis_convention": {
             "status": "CONFIRMED FOR ACTIVE APP AXES",
             "source_program": "CSiBridge",

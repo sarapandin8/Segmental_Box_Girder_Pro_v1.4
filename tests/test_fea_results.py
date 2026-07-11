@@ -278,13 +278,35 @@ def test_fea5c_transfer_simultaneous_component_review_and_chart():
     fig = transfer_component_figure(payload, "M3", bridge_object="B2_SPAN1")
     assert len(fig.data) == 2
     assert fig.data[0].name == "M3 (Mx)"
-    assert fig.data[1].name == "Governing |M3| (Mx)"
+    assert fig.data[1].name == "Governing M3 (Mx)"
     assert "CSiBridge SINGLE STATE force vector" in fig.layout.title.text
     assert "M3 → Mx" in fig.layout.title.text
     assert "%{x:.4f}" in fig.data[0].hovertemplate
     assert "P (Axial)" in fig.data[0].hovertemplate
     assert fig.layout.annotations[0].ax < 0
     assert fig.layout.annotations[0].xanchor == "right"
+
+
+def test_fea5c1_transfer_negative_governing_value_stays_signed_in_chart_labels():
+    rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "Transfer stage", "Combination", -100, -20, 2, -150],
+        ["B2_SPAN1", 2, 39.95, "Before", "Transfer stage", "Combination", -110, 45, -8, 120],
+    ]
+    payload = read_csibridge_force_workbook(
+        _workbook_bytes(rows, include_step=False), filename="transfer.xlsx", stage="transfer"
+    )
+    governing = governing_transfer_component(payload, "M3")
+    assert governing["value"] == -150.0
+    assert governing["absolute"] == 150.0
+
+    fig = transfer_component_figure(payload, "M3", bridge_object="B2_SPAN1")
+    assert fig.data[1].y[0] == -150.0
+    assert fig.data[1].name == "Governing M3 (Mx)"
+    assert "Governing M3 (Mx)" in fig.data[1].hovertemplate
+    assert fig.layout.annotations[0].text == "Governing M3 (Mx)"
+    assert fig.layout.annotations[0].y == -150.0
+    assert FORCE_COMPONENT_META["M3"]["transfer_metric"] == "GOVERNING M3 (Mx)"
+    assert FORCE_COMPONENT_META["M3"]["metric"] == "GOVERNING |M3| (Mx)"
 
 
 def test_fea5c_transfer_rejects_unknown_component():

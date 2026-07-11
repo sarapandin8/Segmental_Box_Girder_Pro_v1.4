@@ -31,6 +31,8 @@ FORCE_COMPONENT_META: dict[str, dict[str, str]] = {
         "lower": "P min",
         "governing": "Governing |P| (Axial)",
         "metric": "GOVERNING |P| (AXIAL)",
+        "transfer_governing": "Governing P (Axial)",
+        "transfer_metric": "GOVERNING P (AXIAL)",
     },
     "V2": {
         "title": "V2 (Vy)",
@@ -42,6 +44,8 @@ FORCE_COMPONENT_META: dict[str, dict[str, str]] = {
         "lower": "V2 min",
         "governing": "Governing |V2| (Vy)",
         "metric": "GOVERNING |V2| (Vy)",
+        "transfer_governing": "Governing V2 (Vy)",
+        "transfer_metric": "GOVERNING V2 (Vy)",
     },
     "T": {
         "title": "T (Torsion)",
@@ -53,6 +57,8 @@ FORCE_COMPONENT_META: dict[str, dict[str, str]] = {
         "lower": "T min",
         "governing": "Governing |T| (Torsion)",
         "metric": "GOVERNING |T| (TORSION)",
+        "transfer_governing": "Governing T (Torsion)",
+        "transfer_metric": "GOVERNING T (TORSION)",
     },
     "M3": {
         "title": "M3 (Mx)",
@@ -64,6 +70,8 @@ FORCE_COMPONENT_META: dict[str, dict[str, str]] = {
         "lower": "M3 min",
         "governing": "Governing |M3| (Mx)",
         "metric": "GOVERNING |M3| (Mx)",
+        "transfer_governing": "Governing M3 (Mx)",
+        "transfer_metric": "GOVERNING M3 (Mx)",
     },
 }
 
@@ -445,11 +453,11 @@ def transfer_component_figure(
                 x=[governing["distance_m"]],
                 y=[governing["value"]],
                 mode="markers",
-                name=meta["governing"],
+                name=meta["transfer_governing"],
                 marker=dict(size=10, color="#111111", symbol="circle"),
                 customdata=[[governing["sect_cut_num"], governing["loc_type"], governing["output_case"], governing["source_row"], vector["P"], vector["V2"], vector["T"], vector["M3"]]],
                 hovertemplate=(
-                    f"<b>{meta['governing']}</b><br>"
+                    f"<b>{meta['transfer_governing']}</b><br>"
                     "x = %{x:.4f} m<br>"
                     "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
                     f"{meta['title']} = %{{y:,.3f}} {meta['unit']}<br>"
@@ -475,7 +483,7 @@ def transfer_component_figure(
         fig.add_annotation(
             x=governing["distance_m"],
             y=governing["value"],
-            text=meta["governing"],
+            text=meta["transfer_governing"],
             showarrow=True,
             arrowhead=2,
             ax=annotation_ax,
