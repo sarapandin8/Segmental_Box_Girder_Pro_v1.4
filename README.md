@@ -1,6 +1,6 @@
-# Segmental Box Girder Pro — COMMERCIAL.FEA.5B1
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5B2
 
-This milestone adds **COMMERCIAL.FEA.5B1 — Axis Convention and ULS Review Polish** on the accepted `COMMERCIAL.FEA.5B` source-review baseline.
+This milestone adds **COMMERCIAL.FEA.5B2 — Governing Annotation and Station Precision Polish** on the accepted `COMMERCIAL.FEA.5B1` axis-convention ULS-review baseline.
 
 ## Scope implemented
 
@@ -26,7 +26,7 @@ This milestone adds **COMMERCIAL.FEA.5B1 — Axis Convention and ULS Review Poli
 
 Schema:
 
-- `0.5.3-commercial-fea5b1-axis-convention-uls-review-polish`
+- `0.5.4-commercial-fea5b2-governing-annotation-station-precision-polish`
 
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5A
 
@@ -523,3 +523,9 @@ Changes:
 Schema:
 
 - 0.4.103-commercial-tendon24i-span-source-consistency-polish
+
+## FEA.5B2 visual-integrity polish
+
+- Governing annotations now move inward automatically when the governing point is near the left or right chart edge, preventing label clipping at end cuts.
+- FEA station identity is displayed to four decimal places in governing cards, summary tables, chart hover text, and compact/detailed scalar-envelope tables.
+- The underlying imported forces, envelopes, source semantics, and downstream-disconnection policy are unchanged.

@@ -9760,7 +9760,7 @@ def _render_fea_uls_summary(payload: dict[str, Any]) -> None:
                 card(
                     meta["metric"],
                     f"{governing['absolute']:,.2f} {meta['unit']}",
-                    f"Signed {governing['value']:,.2f} · Cut {governing['sect_cut_num']} · x={governing['distance_m']:.3f} m",
+                    f"Signed {governing['value']:,.2f} · Cut {governing['sect_cut_num']} · x={governing['distance_m']:.4f} m",
                     "",
                 )
             else:
@@ -9785,7 +9785,7 @@ def _render_fea_uls_summary(payload: dict[str, Any]) -> None:
                 f"{governing['value']:,.3f}",
                 meta["unit"],
                 governing["sect_cut_num"],
-                f"{governing['distance_m']:.3f}",
+                f"{governing['distance_m']:.4f}",
                 governing["loc_type"],
                 governing["source"],
             ]
@@ -9801,7 +9801,7 @@ def _render_fea_uls_summary(payload: dict[str, Any]) -> None:
     with cols[0]:
         card("ULS SOURCE", "READY", str(payload.get("filename") or "-"), "pass")
     with cols[1]:
-        card("SECTION CUTS", str(int(summary.get("sect_cuts", 0))), f"x = {float(summary.get('distance_min_m', 0.0)):.3f}–{float(summary.get('distance_max_m', 0.0)):.3f} m", "")
+        card("SECTION CUTS", str(int(summary.get("sect_cuts", 0))), f"x = {float(summary.get('distance_min_m', 0.0)):.4f}–{float(summary.get('distance_max_m', 0.0)):.4f} m", "")
     with cols[2]:
         card("OUTPUT CASES", str(int(summary.get("output_cases", 0))), _fea_semantics_case_display(payload), "")
     with cols[3]:
@@ -9825,7 +9825,7 @@ def _render_fea_uls_component(payload: dict[str, Any], component: str) -> None:
     with columns[2]:
         card(
             "GOVERNING LOCATION",
-            f"Cut {governing.get('sect_cut_num', '-')} · x={governing.get('distance_m', 0.0):.3f} m",
+            f"Cut {governing.get('sect_cut_num', '-')} · x={governing.get('distance_m', 0.0):.4f} m",
             str(governing.get("loc_type") or "-"),
             "",
         )
@@ -9854,6 +9854,7 @@ def _render_fea_uls_component(payload: dict[str, Any], component: str) -> None:
         compact = frame[[
             "SectCutNum", "Distance", "LocType", "Lower", "Upper", "GoverningValue", "GoverningSource",
         ]].copy()
+        compact["Distance"] = compact["Distance"].map(lambda value: f"{float(value):.4f}")
         compact.columns = [
             "SectCutNum", "Distance (m)", "LocType",
             f"{meta['title']} min ({meta['unit']})",
@@ -9869,6 +9870,7 @@ def _render_fea_uls_component(payload: dict[str, Any], component: str) -> None:
                 "SectCutNum", "Distance", "LocType", "CandidateRows", "Lower", "LowerSource", "Upper", "UpperSource",
                 "GoverningValue", "GoverningSource",
             ]].copy()
+            detailed["Distance"] = detailed["Distance"].map(lambda value: f"{float(value):.4f}")
             detailed.columns = [
                 "SectCutNum", "Distance (m)", "LocType", "Candidate rows",
                 f"{meta['title']} min ({meta['unit']})", "Min source",
@@ -10018,7 +10020,7 @@ def _render_transfer_stage() -> None:
 
 def _render_fea_import_hub() -> None:
     st.markdown(
-        '<div class="note-box"><b>FEA.5B1 source policy:</b> upload separate CSiBridge <b>ULS</b>, '
+        '<div class="note-box"><b>FEA.5B2 source policy:</b> upload separate CSiBridge <b>ULS</b>, '
         '<b>Transfer Stage</b>, and <b>Final Service SLS</b> Bridge Object Forces workbooks. This page validates and '
         'stores source data only; Sections 6–8 are not yet connected.</div>',
         unsafe_allow_html=True,

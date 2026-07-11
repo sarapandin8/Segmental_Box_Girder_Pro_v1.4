@@ -201,6 +201,22 @@ def test_fea5b_component_review_frame_governing_point_and_chart_style():
     assert "CSiBridge scalar component envelope" in fig.layout.title.text
     assert "M3 → Mx" in fig.layout.title.text
     assert fig.layout.yaxis.title.text == "Bending moment, M3 = Mx (kN·m)"
+    assert "%{x:.4f}" in fig.data[0].hovertemplate
+
+
+def test_fea5b2_governing_annotation_moves_inward_at_right_edge():
+    rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "U1", "Combination", "Max", 0, 1, 1, 10],
+        ["B2_SPAN1", 1, 0.0, "After", "U1", "Combination", "Min", 0, -1, -1, -10],
+        ["B2_SPAN1", 2, 39.95, "Before", "U1", "Combination", "Max", 0, 100, 80, 20],
+        ["B2_SPAN1", 2, 39.95, "Before", "U1", "Combination", "Min", 0, -20, -10, -15],
+    ]
+    payload = read_csibridge_force_workbook(_workbook_bytes(rows), filename="uls.xlsx", stage="uls")
+    fig = uls_component_envelope_figure(payload, "V2", bridge_object="B2_SPAN1")
+    annotation = fig.layout.annotations[0]
+    assert annotation.ax < 0
+    assert annotation.xanchor == "right"
+
 
 
 def test_fea5b_rejects_unknown_force_component():

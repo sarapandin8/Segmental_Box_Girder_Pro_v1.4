@@ -216,7 +216,7 @@ def uls_component_envelope_figure(
             customdata=upper_custom,
             hovertemplate=(
                 f"<b>{meta['upper']} · {meta['title']}</b><br>"
-                "x = %{x:.3f} m<br>"
+                "x = %{x:.4f} m<br>"
                 "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
                 f"Value = %{{y:,.3f}} {meta['unit']}<br>"
                 "Source = %{customdata[2]}<extra></extra>"
@@ -234,7 +234,7 @@ def uls_component_envelope_figure(
             customdata=lower_custom,
             hovertemplate=(
                 f"<b>{meta['lower']} · {meta['title']}</b><br>"
-                "x = %{x:.3f} m<br>"
+                "x = %{x:.4f} m<br>"
                 "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
                 f"Value = %{{y:,.3f}} {meta['unit']}<br>"
                 "Source = %{customdata[2]}<extra></extra>"
@@ -258,21 +258,32 @@ def uls_component_envelope_figure(
                 ]],
                 hovertemplate=(
                     f"<b>{meta['governing']}</b><br>"
-                    "x = %{x:.3f} m<br>"
+                    "x = %{x:.4f} m<br>"
                     "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
                     f"Value = %{{y:,.3f}} {meta['unit']}<br>"
                     "Source = %{customdata[2]}<extra></extra>"
                 ),
             )
         )
+        x_min = float(frame["Distance"].min())
+        x_max = float(frame["Distance"].max())
+        span = max(x_max - x_min, 1.0)
+        edge_band = 0.08 * span
+        if governing["distance_m"] >= x_max - edge_band:
+            annotation_ax = -92
+        elif governing["distance_m"] <= x_min + edge_band:
+            annotation_ax = 92
+        else:
+            annotation_ax = 0
         fig.add_annotation(
             x=governing["distance_m"],
             y=governing["value"],
             text=meta["governing"],
             showarrow=True,
             arrowhead=2,
-            ax=0,
+            ax=annotation_ax,
             ay=-34 if governing["value"] >= 0 else 34,
+            xanchor="right" if annotation_ax < 0 else ("left" if annotation_ax > 0 else "center"),
             font=dict(size=11, color=ENGINEERING_FIGURE_COLORS["axis"]),
             bgcolor="rgba(255,255,255,0.86)",
             bordercolor="rgba(148,163,184,0.45)",
