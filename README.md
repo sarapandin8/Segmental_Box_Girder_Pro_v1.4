@@ -1,3 +1,23 @@
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5C
+
+This milestone adds **COMMERCIAL.FEA.5C — Transfer-Stage Simultaneous Force-Vector Review** on the accepted `COMMERCIAL.FEA.5B2` ULS-review baseline.
+
+## Scope implemented
+
+- Converts Section `5.3 Transfer Stage` from a raw table into a commercial nested review workspace: `Summary`, `P (Axial)`, `V2 (Vy)`, `T (Torsion)`, and `M3 (Mx)`.
+- Preserves the hard source contract: exactly one OutputCase, one row per SectCutNum, blank StepType, and `SINGLE STATE` semantics.
+- Adds source-traced full-span component charts with four-decimal station identity, governing markers, edge-safe annotations, and Concrete Section Pro figure styling.
+- Exposes the complete simultaneous `P–V2–T–M3` companion vector in chart hover and in a governing-station vector table.
+- Distinguishes two valid statements: each source row is one simultaneous vector, while the four global governing components may occur at different section cuts and are not one common vector.
+- Keeps Sections 6–8 explicitly **NOT YET CONNECTED**; no design demand or result changes in this milestone.
+- Pins `plotly==5.24.1`, matching the Streamlit Cloud-compatible figure runtime verified against Concrete Section Pro; Plotly 6 remains blocked pending a separate compatibility audit.
+
+Schema:
+
+- `0.5.5-commercial-fea5c-transfer-stage-simultaneous-force-review`
+
+---
+
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5B2
 
 This milestone adds **COMMERCIAL.FEA.5B2 — Governing Annotation and Station Precision Polish** on the accepted `COMMERCIAL.FEA.5B1` axis-convention ULS-review baseline.

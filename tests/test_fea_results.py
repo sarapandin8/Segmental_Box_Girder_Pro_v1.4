@@ -19,6 +19,9 @@ from visualization.fea_figures import (
     component_envelope_frame,
     dominant_component_sources,
     governing_component_envelope,
+    governing_transfer_component,
+    transfer_component_figure,
+    transfer_component_frame,
     uls_component_envelope_figure,
 )
 
@@ -250,3 +253,40 @@ def test_fea5b1_axis_convention_metadata_and_dominant_sources():
     assert dominant["max"]["count"] == 2
     assert dominant["max"]["total"] == 3
     assert dominant["min"]["label"].startswith("U1 / Min")
+
+
+def test_fea5c_transfer_simultaneous_component_review_and_chart():
+    rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "Transfer stage", "Combination", -100, -20, 2, -50],
+        ["B2_SPAN1", 2, 39.95, "Before", "Transfer stage", "Combination", -110, 45, -8, 120],
+    ]
+    payload = read_csibridge_force_workbook(
+        _workbook_bytes(rows, include_step=False), filename="transfer.xlsx", stage="transfer"
+    )
+    frame = transfer_component_frame(payload, "M3")
+    assert list(frame["SectCutNum"]) == [1, 2]
+    assert frame.loc[1, "Value"] == 120.0
+    assert frame.loc[1, "P"] == -110.0
+    assert frame.loc[1, "SourceState"] == SOURCE_STATE_SINGLE
+
+    governing = governing_transfer_component(payload, "M3")
+    assert governing["absolute"] == 120.0
+    assert governing["sect_cut_num"] == 2
+    assert governing["distance_m"] == 39.95
+    assert governing["vector"] == {"P": -110.0, "V2": 45.0, "T": -8.0, "M3": 120.0}
+
+    fig = transfer_component_figure(payload, "M3", bridge_object="B2_SPAN1")
+    assert len(fig.data) == 2
+    assert fig.data[0].name == "M3 (Mx)"
+    assert fig.data[1].name == "Governing |M3| (Mx)"
+    assert "CSiBridge SINGLE STATE force vector" in fig.layout.title.text
+    assert "M3 → Mx" in fig.layout.title.text
+    assert "%{x:.4f}" in fig.data[0].hovertemplate
+    assert "P (Axial)" in fig.data[0].hovertemplate
+    assert fig.layout.annotations[0].ax < 0
+    assert fig.layout.annotations[0].xanchor == "right"
+
+
+def test_fea5c_transfer_rejects_unknown_component():
+    with pytest.raises(ValueError, match="Unsupported FEA force component"):
+        transfer_component_frame({"records": []}, "V3")

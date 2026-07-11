@@ -1,8 +1,10 @@
 """Commercial FEA result-review figures for Segmental Box Girder Pro.
 
-The figures in this module are review-only. They visualize source-traced scalar
-component envelopes imported from CSiBridge; they do not create simultaneous
-force vectors and they do not feed the downstream design checks.
+The figures in this module are review-only. ULS figures visualize source-traced
+scalar component envelopes and never synthesize simultaneous force vectors.
+Transfer-stage figures visualize validated SINGLE STATE rows whose P-V2-T-M3
+components are simultaneous at each section cut. No figure feeds downstream
+design checks in this milestone.
 """
 
 from __future__ import annotations
@@ -328,10 +330,208 @@ def uls_component_envelope_figure(
     return fig
 
 
+def transfer_component_frame(payload: dict[str, Any], component: str) -> pd.DataFrame:
+    """Return validated Transfer-stage SINGLE STATE rows for one component.
+
+    Every row retains the complete simultaneous P-V2-T-M3 vector so the
+    governing component can be reviewed together with its companion actions.
+    """
+    if component not in FORCE_COMPONENT_META:
+        raise ValueError(f"Unsupported FEA force component: {component}")
+    records = payload.get("records", []) if isinstance(payload, dict) else []
+    rows: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        rows.append(
+            {
+                "SourceRow": int(record.get("SourceRow", 0)),
+                "SectCutNum": int(record["SectCutNum"]),
+                "Distance": float(record["Distance"]),
+                "LocType": str(record["LocType"]),
+                "OutputCase": str(record.get("OutputCase") or "-"),
+                "SourceState": str(record.get("SourceState") or "-"),
+                "P": float(record["P"]),
+                "V2": float(record["V2"]),
+                "T": float(record["T"]),
+                "M3": float(record["M3"]),
+                "Value": float(record[component]),
+            }
+        )
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows).sort_values("SectCutNum").reset_index(drop=True)
+
+
+def governing_transfer_component(payload: dict[str, Any], component: str) -> dict[str, Any]:
+    """Return a governing Transfer component and its simultaneous force vector."""
+    frame = transfer_component_frame(payload, component)
+    if frame.empty:
+        return {}
+    row = frame.loc[frame["Value"].abs().idxmax()]
+    return {
+        "component": component,
+        "value": float(row["Value"]),
+        "absolute": abs(float(row["Value"])),
+        "sect_cut_num": int(row["SectCutNum"]),
+        "distance_m": float(row["Distance"]),
+        "loc_type": str(row["LocType"]),
+        "output_case": str(row["OutputCase"]),
+        "source_state": str(row["SourceState"]),
+        "source_row": int(row["SourceRow"]),
+        "vector": {force: float(row[force]) for force in FORCE_COMPONENT_META},
+    }
+
+
+def transfer_component_figure(
+    payload: dict[str, Any],
+    component: str,
+    *,
+    bridge_object: str = "",
+) -> go.Figure:
+    """Build a Transfer-stage SINGLE STATE component review chart.
+
+    The plotted component belongs to a complete simultaneous P-V2-T-M3 vector
+    at every SectCutNum. Hover text therefore exposes all four companion
+    actions without converting the chart into a design check.
+    """
+    meta = FORCE_COMPONENT_META.get(component)
+    if meta is None:
+        raise ValueError(f"Unsupported FEA force component: {component}")
+    frame = transfer_component_frame(payload, component)
+    fig = go.Figure()
+    if frame.empty:
+        return apply_engineering_figure_layout(
+            fig,
+            title=f"Transfer Stage {meta['title']} — no source data",
+            x_title="Distance from left end of span (m)",
+            y_title=meta["axis"],
+            height=560,
+            showlegend=False,
+        )
+
+    customdata = frame[[
+        "SectCutNum", "LocType", "OutputCase", "SourceState", "SourceRow", "P", "V2", "T", "M3",
+    ]].to_numpy()
+    fig.add_trace(
+        go.Scatter(
+            x=frame["Distance"],
+            y=frame["Value"],
+            mode="lines+markers",
+            name=meta["title"],
+            line=dict(color="#1f77b4", width=2.5),
+            marker=dict(size=5, color="#1f77b4"),
+            customdata=customdata,
+            hovertemplate=(
+                f"<b>Transfer Stage · {meta['title']}</b><br>"
+                "x = %{x:.4f} m<br>"
+                "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
+                f"{meta['title']} = %{{y:,.3f}} {meta['unit']}<br>"
+                "P (Axial) = %{customdata[5]:,.3f} kN<br>"
+                "V2 (Vy) = %{customdata[6]:,.3f} kN<br>"
+                "T (Torsion) = %{customdata[7]:,.3f} kN·m<br>"
+                "M3 (Mx) = %{customdata[8]:,.3f} kN·m<br>"
+                "Source = %{customdata[2]} · %{customdata[3]} · row %{customdata[4]}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    governing = governing_transfer_component(payload, component)
+    if governing:
+        vector = governing["vector"]
+        fig.add_trace(
+            go.Scatter(
+                x=[governing["distance_m"]],
+                y=[governing["value"]],
+                mode="markers",
+                name=meta["governing"],
+                marker=dict(size=10, color="#111111", symbol="circle"),
+                customdata=[[governing["sect_cut_num"], governing["loc_type"], governing["output_case"], governing["source_row"], vector["P"], vector["V2"], vector["T"], vector["M3"]]],
+                hovertemplate=(
+                    f"<b>{meta['governing']}</b><br>"
+                    "x = %{x:.4f} m<br>"
+                    "SectCutNum = %{customdata[0]} · %{customdata[1]}<br>"
+                    f"{meta['title']} = %{{y:,.3f}} {meta['unit']}<br>"
+                    "P (Axial) = %{customdata[4]:,.3f} kN<br>"
+                    "V2 (Vy) = %{customdata[5]:,.3f} kN<br>"
+                    "T (Torsion) = %{customdata[6]:,.3f} kN·m<br>"
+                    "M3 (Mx) = %{customdata[7]:,.3f} kN·m<br>"
+                    "Source = %{customdata[2]} · row %{customdata[3]}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+        x_min = float(frame["Distance"].min())
+        x_max = float(frame["Distance"].max())
+        span = max(x_max - x_min, 1.0)
+        edge_band = 0.08 * span
+        if governing["distance_m"] >= x_max - edge_band:
+            annotation_ax = -92
+        elif governing["distance_m"] <= x_min + edge_band:
+            annotation_ax = 92
+        else:
+            annotation_ax = 0
+        fig.add_annotation(
+            x=governing["distance_m"],
+            y=governing["value"],
+            text=meta["governing"],
+            showarrow=True,
+            arrowhead=2,
+            ax=annotation_ax,
+            ay=-34 if governing["value"] >= 0 else 34,
+            xanchor="right" if annotation_ax < 0 else ("left" if annotation_ax > 0 else "center"),
+            font=dict(size=11, color=ENGINEERING_FIGURE_COLORS["axis"]),
+            bgcolor="rgba(255,255,255,0.86)",
+            bordercolor="rgba(148,163,184,0.45)",
+            borderwidth=1,
+            borderpad=4,
+        )
+
+    span_text = bridge_object or ", ".join(payload.get("bridge_objects", [])) or "Active span"
+    title = (
+        f"<b>Transfer Stage {meta['title']}</b>"
+        f"<br><span style='font-size:12px'>CSiBridge SINGLE STATE force vector · {meta['mapping']} · {span_text}</span>"
+    )
+    apply_engineering_figure_layout(
+        fig,
+        title=title,
+        x_title="Distance from left end of span (m)",
+        y_title=meta["axis"],
+        height=560,
+        showlegend=True,
+        subtle_grid=False,
+        margin=dict(l=72, r=34, t=84, b=112),
+    )
+    fig.update_layout(
+        title=dict(text=title, x=0.5, xanchor="center", y=0.97, yanchor="top"),
+        hovermode="closest",
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.20,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11),
+            bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="rgba(148,163,184,0.35)",
+            borderwidth=1,
+        ),
+    )
+    fig.update_xaxes(
+        range=[float(frame["Distance"].min()), float(frame["Distance"].max())],
+        tickformat=".3~f",
+    )
+    return fig
+
+
 __all__ = [
     "FORCE_COMPONENT_META",
     "dominant_component_sources",
     "component_envelope_frame",
     "governing_component_envelope",
     "uls_component_envelope_figure",
+    "transfer_component_frame",
+    "governing_transfer_component",
+    "transfer_component_figure",
 ]

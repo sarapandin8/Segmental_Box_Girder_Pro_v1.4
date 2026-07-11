@@ -126,6 +126,9 @@ from visualization.fea_figures import (
     component_envelope_frame,
     dominant_component_sources,
     governing_component_envelope,
+    governing_transfer_component,
+    transfer_component_figure,
+    transfer_component_frame,
     uls_component_envelope_figure,
 )
 from visualization.section_figures import PLOTLY_SECTION_CONFIG, section_polygon_figure
@@ -9998,29 +10001,172 @@ def _render_fea_envelope_stage(stage: str, *, default_components: list[str]) -> 
         st.dataframe(raw, width="stretch", hide_index=True, height=620)
 
 
+TRANSFER_COMPONENT_SECTIONS = {"P": "5.3.1", "V2": "5.3.2", "T": "5.3.3", "M3": "5.3.4"}
+
+
+def _transfer_source_trace(governing: dict[str, Any]) -> str:
+    return f"{governing.get('output_case', '-')} · SINGLE STATE · row {int(governing.get('source_row', 0))}"
+
+
+def _render_fea_transfer_summary(payload: dict[str, Any]) -> None:
+    summary = payload.get("summary", {})
+    cards = st.columns(4)
+    for column, component in zip(cards, FORCE_COMPONENTS):
+        meta = FORCE_COMPONENT_META[component]
+        governing = governing_transfer_component(payload, component)
+        with column:
+            if governing:
+                card(
+                    meta["metric"],
+                    f"{governing['absolute']:,.2f} {meta['unit']}",
+                    f"Signed {governing['value']:,.2f} · Cut {governing['sect_cut_num']} · x={governing['distance_m']:.4f} m",
+                    "",
+                )
+            else:
+                card(meta["metric"], "NOT AVAILABLE", "No Transfer-stage source row is available.", "warn")
+
+    st.markdown(
+        '<div class="note-box"><b>Transfer-stage vector semantics:</b> every source row contains one simultaneous '
+        '<b>P (Axial)–V2 (Vy)–T (Torsion)–M3 (Mx)</b> force vector. The four governing cards can occur at different '
+        'section cuts and therefore are not one common vector. Open a component review to inspect the complete companion '
+        'vector at that component’s governing station. <b>Sections 6–8 remain disconnected</b> from this review page.</div>',
+        unsafe_allow_html=True,
+    )
+    rows: list[list[Any]] = []
+    for component in FORCE_COMPONENTS:
+        meta = FORCE_COMPONENT_META[component]
+        governing = governing_transfer_component(payload, component)
+        if not governing:
+            continue
+        rows.append([
+            meta["title"],
+            f"{governing['absolute']:,.3f}",
+            f"{governing['value']:,.3f}",
+            meta["unit"],
+            governing["sect_cut_num"],
+            f"{governing['distance_m']:.4f}",
+            governing["loc_type"],
+            _transfer_source_trace(governing),
+        ])
+    st.markdown("#### Governing Transfer-stage component summary")
+    show_engineering_table(pd.DataFrame(
+        rows,
+        columns=["Force / app axis", "Maximum absolute", "Signed value", "Unit", "SectCutNum", "x (m)", "LocType", "Source trace"],
+    ))
+    cols = st.columns(4)
+    with cols[0]:
+        card("TRANSFER SOURCE", "READY", str(payload.get("filename") or "-"), "pass")
+    with cols[1]:
+        card("SECTION CUTS", str(int(summary.get("sect_cuts", 0))), f"x = {float(summary.get('distance_min_m', 0.0)):.4f}–{float(summary.get('distance_max_m', 0.0)):.4f} m", "")
+    with cols[2]:
+        card("OUTPUT CASES", str(int(summary.get("output_cases", 0))), "One row per cut · SINGLE STATE", "pass")
+    with cols[3]:
+        card("DOWNSTREAM", "NOT YET CONNECTED", "Review-only simultaneous source vectors", "warn")
+
+
+def _render_fea_transfer_component(payload: dict[str, Any], component: str) -> None:
+    meta = FORCE_COMPONENT_META[component]
+    governing = governing_transfer_component(payload, component)
+    columns = st.columns(4)
+    with columns[0]:
+        card("FORCE REVIEW STATUS", "SOURCE READY", "SINGLE STATE Transfer review · no design check", "pass")
+    with columns[1]:
+        card(
+            meta["metric"],
+            f"{governing.get('absolute', 0.0):,.2f} {meta['unit']}",
+            f"Signed value {governing.get('value', 0.0):,.2f} {meta['unit']}",
+            "",
+        )
+    with columns[2]:
+        card(
+            "GOVERNING LOCATION",
+            f"Cut {governing.get('sect_cut_num', '-')} · x={governing.get('distance_m', 0.0):.4f} m",
+            str(governing.get("loc_type") or "-"),
+            "",
+        )
+    with columns[3]:
+        card(
+            "SOURCE VECTOR",
+            str(governing.get("output_case") or "-"),
+            f"SINGLE STATE · row {int(governing.get('source_row', 0))}",
+            "pass",
+        )
+
+    fig = transfer_component_figure(payload, component, bridge_object=str(D.get("project", {}).get("bridge_object", "")))
+    show_plotly(fig)
+    st.caption(
+        f"{meta['title']} is plotted from one validated SINGLE STATE row at each SectCutNum. "
+        "Hover exposes the simultaneous P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) companion actions. "
+        "This source review does not yet feed Sections 6–8."
+    )
+
+    if governing:
+        vector = governing.get("vector", {})
+        st.markdown("#### Simultaneous force vector at the governing station")
+        show_engineering_table(pd.DataFrame([[
+            governing["sect_cut_num"], f"{governing['distance_m']:.4f}", governing["loc_type"],
+            f"{float(vector.get('P', 0.0)):,.3f}", f"{float(vector.get('V2', 0.0)):,.3f}",
+            f"{float(vector.get('T', 0.0)):,.3f}", f"{float(vector.get('M3', 0.0)):,.3f}",
+            _transfer_source_trace(governing),
+        ]], columns=[
+            "SectCutNum", "x (m)", "LocType", "P (Axial) (kN)", "V2 (Vy) (kN)",
+            "T (Torsion) (kN·m)", "M3 (Mx) (kN·m)", "Source trace",
+        ]))
+
+    frame = transfer_component_frame(payload, component)
+    if not frame.empty:
+        compact = frame[["SectCutNum", "Distance", "LocType", "P", "V2", "T", "M3", "OutputCase", "SourceRow"]].copy()
+        compact["Distance"] = compact["Distance"].map(lambda value: f"{float(value):.4f}")
+        compact.columns = [
+            "SectCutNum", "Distance (m)", "LocType", "P (Axial) (kN)", "V2 (Vy) (kN)",
+            "T (Torsion) (kN·m)", "M3 (Mx) (kN·m)", "OutputCase", "Source row",
+        ]
+        st.markdown("#### Transfer-stage simultaneous force-vector table")
+        st.dataframe(compact, width="stretch", hide_index=True, height=430)
+
+    if _trace_toggle("Transfer-stage raw source rows / QA", default=False):
+        st.dataframe(pd.DataFrame(payload.get("records", [])), width="stretch", hide_index=True, height=620)
+
+
 def _render_transfer_stage() -> None:
     payload = _fea_stage_imports().get("transfer", {})
     if not _render_fea_stage_header("transfer", payload):
         return
     st.markdown(
         '<div class="note-box"><b>Transfer-stage hard gate:</b> the accepted source has exactly one OutputCase, '
-        'one row per SectCutNum, blank StepType, and SINGLE STATE semantics. P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) in each row are one '
-        'traceable simultaneous Transfer-stage force vector.</div>',
+        'one row per SectCutNum, blank StepType, and SINGLE STATE semantics. P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) '
+        'in each row are one traceable simultaneous Transfer-stage force vector.</div>',
         unsafe_allow_html=True,
     )
-    records = pd.DataFrame(payload.get("records", []))
-    if not records.empty:
-        columns = ["SectCutNum", "Distance", "LocType", "OutputCase", "SourceState", "P", "V2", "T", "M3"]
-        display = records[columns].copy()
-        display.columns = ["SectCutNum", "Distance (m)", "LocType", "OutputCase", "Source semantics", "P (Axial) (kN)", "V2 (Vy) (kN)", "T (Torsion) (kN·m)", "M3 (Mx) (kN·m)"]
-        st.dataframe(display, width="stretch", hide_index=True, height=620)
-    st.markdown("#### Global transfer-stage extrema")
-    show_engineering_table(_fea_global_extrema_frame(payload))
+    st.markdown(_fea_axis_convention_html(), unsafe_allow_html=True)
+    view_labels = {
+        "summary": "Summary",
+        "P": "P (Axial)",
+        "V2": "V2 (Vy)",
+        "T": "T (Torsion)",
+        "M3": "M3 (Mx)",
+    }
+    if st.session_state.get("fea_transfer_force_review_subpage") not in view_labels:
+        st.session_state.fea_transfer_force_review_subpage = "summary"
+    selected = st.radio(
+        "Transfer-stage force review subpage",
+        list(view_labels),
+        format_func=lambda key: view_labels[key],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="fea_transfer_force_review_subpage",
+    )
+    active_title = "Transfer Summary" if selected == "summary" else f"{TRANSFER_COMPONENT_SECTIONS[selected]} {FORCE_COMPONENT_META[selected]['title']}"
+    st.caption(f"Active review: {active_title} · validated SINGLE STATE source vectors are preserved.")
+    if selected == "summary":
+        _render_fea_transfer_summary(payload)
+    else:
+        _render_fea_transfer_component(payload, selected)
 
 
 def _render_fea_import_hub() -> None:
     st.markdown(
-        '<div class="note-box"><b>FEA.5B2 source policy:</b> upload separate CSiBridge <b>ULS</b>, '
+        '<div class="note-box"><b>FEA.5C source policy:</b> upload separate CSiBridge <b>ULS</b>, '
         '<b>Transfer Stage</b>, and <b>Final Service SLS</b> Bridge Object Forces workbooks. This page validates and '
         'stores source data only; Sections 6–8 are not yet connected.</div>',
         unsafe_allow_html=True,
