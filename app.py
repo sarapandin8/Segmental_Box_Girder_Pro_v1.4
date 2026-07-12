@@ -167,6 +167,7 @@ from core.report_schema import WORKSPACE_LABELS, get_workspace
 from core.validation import (
     PROJECT_SCHEMA_VERSION,
     ensure_project_schema,
+    project_schema_is_current,
     issue_counts,
     validate_project,
     workflow_status,
@@ -502,21 +503,40 @@ def _section_data_gate_html(project: dict[str, Any]) -> str:
 
 
 def _apply_pending_project_json_load() -> None:
-    """Apply a loaded project before any widget-bound session keys are instantiated.
+    """Decode, migrate, and apply one pending Project JSON exactly once.
 
-    Streamlit disallows modifying a session-state key after a widget with the same
-    key has been created in the current run. The sidebar workspace/subpage radios
-    use ``current_workspace`` and ``current_subpage`` as widget keys, so a project
-    JSON load stores pending state first, reruns, and this function applies the
-    project/navigation reset at the very top of the next run.
+    The sidebar button stores only immutable raw bytes plus trace metadata.  The
+    following rerun reaches this function before widget-bound session keys exist,
+    performs the single schema migration, assigns the resulting project, and then
+    discards the raw payload.  A failed legacy migration leaves the active project
+    untouched and returns a user-facing error instead of crashing the app.
     """
     pending = st.session_state.pop("_pending_project_json_load", None)
     if not isinstance(pending, dict):
         return
-    loaded_project = pending.get("project")
-    if isinstance(loaded_project, dict):
-        st.session_state.project = ensure_project_schema(loaded_project)
+
+    raw = pending.get("raw")
+    filename = str(pending.get("filename") or "project.json")
+    try:
+        if not isinstance(raw, (bytes, bytearray)):
+            raise ProjectJsonLoadError("Pending project payload is missing or invalid.")
+        loaded_project = load_project_json_bytes(bytes(raw), filename)
+        summary = project_load_summary(loaded_project)
+        st.session_state.project = loaded_project
         _bump_project_widget_epoch_and_clear_stale_editors()
+        st.session_state.project_load_message = (
+            f"Loaded project {summary['project']} / {summary['bridge_object']} · "
+            f"source schema {summary['source_file_schema_version']} · "
+            f"app schema {summary['schema_version']} · {summary['schema_migration_status']}."
+        )
+        st.session_state.pop("project_load_error", None)
+        if pending.get("fingerprint"):
+            st.session_state.project_json_loaded_fingerprint = str(pending["fingerprint"])
+    except ProjectJsonLoadError as exc:
+        st.session_state.project_load_error = f"Could not load JSON: {exc}"
+    except Exception as exc:  # noqa: BLE001 - keep current project alive on legacy-load failure.
+        st.session_state.project_load_error = f"Could not load JSON due to an unexpected error: {exc}"
+
     target_workspace = pending.get("workspace", WORKSPACE_LABELS[0])
     if target_workspace not in WORKSPACE_LABELS:
         target_workspace = WORKSPACE_LABELS[0]
@@ -526,17 +546,16 @@ def _apply_pending_project_json_load() -> None:
         target_subpage = ws_def["subpages"][0]
     st.session_state.current_workspace = target_workspace
     st.session_state.current_subpage = target_subpage
-    if pending.get("fingerprint"):
-        st.session_state.project_json_loaded_fingerprint = str(pending["fingerprint"])
-    if pending.get("message"):
-        st.session_state.project_load_message = str(pending["message"])
 
 
 _apply_pending_project_json_load()
 
 if "project" not in st.session_state:
     st.session_state.project = ensure_project_schema(BG40_DEFAULT)
-else:
+elif not project_schema_is_current(st.session_state.project):
+    # Compatibility fallback for a session created by an older deployed build.
+    # Once promoted, current-schema projects take the no-copy fast path on every
+    # subsequent Streamlit rerun.
     st.session_state.project = ensure_project_schema(st.session_state.project)
 
 D = st.session_state.project
@@ -1852,30 +1871,22 @@ def render_sidebar() -> None:
             if loaded_fp == upload_fp:
                 st.success("This uploaded project JSON is already loaded.")
             if st.button("Load uploaded project", key="load_project_json_button", use_container_width=True):
-                try:
-                    loaded_project = load_project_json_bytes(raw_project_json, getattr(uploaded, "name", ""))
-                    summary = project_load_summary(loaded_project)
-                    # Do not mutate widget-bound keys such as current_workspace/current_subpage
-                    # after their radio widgets have been instantiated. Store a pending load
-                    # and apply it at the top of the next run before any widgets are created.
-                    st.session_state._pending_project_json_load = {
-                        "project": loaded_project,
-                        "workspace": WORKSPACE_LABELS[0],
-                        "subpage": get_workspace(WORKSPACE_LABELS[0])["subpages"][0],
-                        "fingerprint": upload_fp,
-                        "message": (
-                            f"Loaded project {summary['project']} / {summary['bridge_object']} · "
-                            f"source schema {summary['loaded_schema_version']} · "
-                            f"app schema {summary['schema_version']} · {summary['schema_migration_status']}."
-                        ),
-                    }
-                    st.rerun()
-                except ProjectJsonLoadError as exc:
-                    st.error(f"Could not load JSON: {exc}")
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"Could not load JSON due to an unexpected error: {exc}")
+                # Store immutable bytes only.  Decoding/migration occurs once at the
+                # top of the next run, before widget keys are instantiated.
+                st.session_state._pending_project_json_load = {
+                    "raw": bytes(raw_project_json),
+                    "filename": getattr(uploaded, "name", "project.json"),
+                    "workspace": WORKSPACE_LABELS[0],
+                    "subpage": get_workspace(WORKSPACE_LABELS[0])["subpages"][0],
+                    "fingerprint": upload_fp,
+                }
+                st.session_state.pop("project_load_message", None)
+                st.session_state.pop("project_load_error", None)
+                st.rerun()
         if st.session_state.get("project_load_message"):
             st.success(st.session_state.project_load_message)
+        if st.session_state.get("project_load_error"):
+            st.error(st.session_state.project_load_error)
 
 
 def render_header() -> None:
@@ -10801,7 +10812,7 @@ def render_project_save_panel() -> None:
         meta = project.get("meta", {}) if isinstance(project, dict) else {}
         st.caption(
             f"App schema: {PROJECT_SCHEMA_VERSION} · "
-            f"Loaded source schema: {meta.get('loaded_schema_version', '-')} · "
+            f"Loaded source schema: {meta.get('source_file_schema_version', meta.get('loaded_schema_version', '-'))} · "
             f"Migration: {meta.get('schema_migration_status', 'Current')}"
         )
         st.download_button(

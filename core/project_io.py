@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from copy import deepcopy
 from typing import Any, Dict
 
-from core.validation import ensure_project_schema
+from core.validation import PROJECT_SCHEMA_VERSION, ensure_project_schema, project_schema_is_current
 
 MAX_PROJECT_JSON_BYTES = 20 * 1024 * 1024  # 20 MB guard; project JSON should normally be much smaller.
 
@@ -29,18 +28,30 @@ def section_persistence_summary(project: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def serialize_project_json_bytes(project: Dict[str, Any]) -> bytes:
-    """Return a schema-migrated JSON payload for Project Save.
+    """Return a current-schema JSON payload without re-migrating live state.
 
-    This is the only project-save serialization path. It protects section
-    coordinate rows from accidental loss by running the same schema/migration
-    pass used by project load before emitting JSON.
+    The active Streamlit project is mutable and may be several megabytes after FEA
+    source import.  A fully migrated project therefore takes a shallow metadata
+    snapshot only; nested engineering records are serialized directly and are not
+    deep-copied.  Legacy/non-current dictionaries still use the safe copy-on-
+    migrate path before serialization.
     """
     if not isinstance(project, dict):
         raise TypeError("Project must be a dictionary before it can be saved as JSON.")
-    data = ensure_project_schema(deepcopy(project))
-    meta = data.setdefault("meta", {})
+
+    if project_schema_is_current(project):
+        data = dict(project)
+        meta = dict(project.get("meta", {}))
+        data["meta"] = meta
+    else:
+        data = ensure_project_schema(project, copy_project=True)
+        meta = data.setdefault("meta", {})
+
     meta["last_save_section_persistence"] = section_persistence_summary(data)
-    return json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+    meta["saved_with_schema_version"] = PROJECT_SCHEMA_VERSION
+    # Compact JSON materially reduces peak string/bytes size for large FEA source
+    # packages while remaining standard UTF-8 JSON.
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
 class ProjectJsonLoadError(ValueError):
@@ -80,8 +91,26 @@ def load_project_json_bytes(raw: bytes, filename: str = "") -> Dict[str, Any]:
         raise ProjectJsonLoadError(f"Invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
     if not isinstance(data, dict):
         raise ProjectJsonLoadError("The project JSON root must be an object/dictionary.")
+    meta = data.get("meta", {}) if isinstance(data, dict) else {}
+    source_schema = str(meta.get("schema_version") or "-") if isinstance(meta, dict) else "-"
     try:
-        return ensure_project_schema(data)
+        loaded = ensure_project_schema(
+            data,
+            copy_project=False,
+            source_schema_version=source_schema,
+        )
+        # A file saved by the current app declares the current schema even when it
+        # carries older provenance fields from an earlier migration.  Normalize the
+        # *file* schema trace here without discarding historical origin metadata.
+        if source_schema == PROJECT_SCHEMA_VERSION:
+            loaded_meta = loaded.setdefault("meta", {})
+            loaded_meta["source_file_schema_version"] = source_schema
+            loaded_meta["loaded_schema_version"] = source_schema
+            loaded_meta["schema_migration_status"] = "Current"
+            loaded_meta["migration_path"] = [PROJECT_SCHEMA_VERSION]
+            loaded_meta["migration_target_schema_version"] = PROJECT_SCHEMA_VERSION
+            loaded_meta["migration_complete"] = True
+        return loaded
     except Exception as exc:  # noqa: BLE001 - convert migration errors to a user-facing load error.
         raise ProjectJsonLoadError(f"Project JSON schema migration failed: {exc}") from exc
 
@@ -94,7 +123,10 @@ def project_load_summary(project: Dict[str, Any]) -> Dict[str, str]:
         "project": str(p.get("name", "-")),
         "bridge_object": str(p.get("bridge_object", "-")),
         "schema_version": str(meta.get("schema_version", "-")),
-        "loaded_schema_version": str(meta.get("loaded_schema_version", meta.get("schema_version", "-"))),
+        "loaded_schema_version": str(meta.get("source_file_schema_version", meta.get("loaded_schema_version", meta.get("schema_version", "-")))),
+        "source_file_schema_version": str(meta.get("source_file_schema_version", meta.get("loaded_schema_version", meta.get("schema_version", "-")))),
+        "historical_origin_schema_version": str(meta.get("historical_origin_schema_version", "-")),
         "schema_migration_status": str(meta.get("schema_migration_status", "Current")),
+        "migration_complete": "yes" if meta.get("migration_complete") is True else "no",
         "baseline_report": str(meta.get("baseline_report", "-")),
     }

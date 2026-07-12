@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Iterable, Literal
 
-PROJECT_SCHEMA_VERSION = "0.5.8-commercial-fea5d1-final-service-component-review-closeout"
+PROJECT_SCHEMA_VERSION = "0.5.9-commercial-fea5d1a-legacy-project-load-single-pass-hotfix"
 
 IssueLevel = Literal["ERROR", "WARNING", "INFO"]
 
@@ -172,20 +172,58 @@ def _deep_fill_missing(target: Dict, defaults: Dict) -> Dict:
             _deep_fill_missing(target[key], default_value)
     return target
 
-def ensure_project_schema(project: Dict) -> Dict:
-    """Return a project dict with required commercial metadata keys.
+def project_schema_is_current(project: Dict) -> bool:
+    """Return True when a session project is already migrated to this app schema.
 
-    This function is deliberately non-destructive: it fills missing keys only and
-    keeps legacy MVP project files loadable.
+    The explicit completion marker prevents a partially migrated dictionary from
+    taking the fast path merely because its schema string was edited.
     """
+    if not isinstance(project, dict):
+        return False
+    meta = project.get("meta", {})
+    return bool(
+        isinstance(meta, dict)
+        and str(meta.get("schema_version", "")) == PROJECT_SCHEMA_VERSION
+        and meta.get("migration_complete") is True
+        and str(meta.get("migration_target_schema_version", "")) == PROJECT_SCHEMA_VERSION
+    )
+
+
+def _migrate_project_schema_in_place(
+    data: Dict,
+    *,
+    source_schema_version: str | None = None,
+) -> Dict:
+    """Migrate a newly decoded project dictionary exactly once, in place.
+
+    ``json.loads`` already returns a private object, so copying that entire object
+    again only increases peak memory.  This function is therefore used by the
+    Project JSON loader after it has captured the source-file schema.
+    """
+    if not isinstance(data, dict):
+        raise TypeError("Project must be a dictionary before schema migration.")
+
     from core.bg40_defaults import BG40_DEFAULT
 
-    data = deepcopy(project)
+    meta = data.setdefault("meta", {})
+    if not isinstance(meta, dict):
+        data["meta"] = {}
+        meta = data["meta"]
+
+    source_schema = str(
+        source_schema_version
+        or meta.get("schema_version")
+        or meta.get("source_file_schema_version")
+        or "-"
+    )
+    historical_origin = str(meta.get("loaded_schema_version") or "").strip()
+
     _migrate_section_coordinate_rows(data)
     _migrate_fea_result_sources(data)
     data = _deep_fill_missing(data, BG40_DEFAULT)
     _migrate_section_coordinate_rows(data)
     _migrate_fea_result_sources(data)
+
     from core.code_basis import migrate_project_code_basis
 
     data = migrate_project_code_basis(data)
@@ -198,21 +236,52 @@ def ensure_project_schema(project: Dict) -> Dict:
         tendon_layout["adopted_source_trace"] = build_tendon_source_trace(tendon_layout, adopted_model)
 
     meta = data.setdefault("meta", {})
-    original_schema = str(meta.get("loaded_schema_version") or meta.get("schema_version") or "-")
-    # Always promote the active project schema marker to the active app schema while
-    # preserving the source schema for traceability. This prevents the sidebar from
-    # showing an old project-file schema as if it were the app runtime schema.
-    if original_schema != PROJECT_SCHEMA_VERSION:
-        meta.setdefault("loaded_schema_version", original_schema)
-        meta["schema_migration_status"] = f"Migrated from {original_schema}"
-    else:
-        meta.setdefault("loaded_schema_version", original_schema)
+    meta["source_file_schema_version"] = source_schema
+    # Compatibility field retained for existing report/UI code.  It now means the
+    # schema declared by the file being loaded, not the oldest historical origin.
+    meta["loaded_schema_version"] = source_schema
+    if historical_origin and historical_origin not in {"-", source_schema}:
+        meta["historical_origin_schema_version"] = historical_origin
+
+    if source_schema == PROJECT_SCHEMA_VERSION:
         meta["schema_migration_status"] = "Current"
+        meta["migration_path"] = [PROJECT_SCHEMA_VERSION]
+    else:
+        meta["schema_migration_status"] = f"Migrated from {source_schema}"
+        meta["migration_path"] = [source_schema, PROJECT_SCHEMA_VERSION]
+
     meta["schema_version"] = PROJECT_SCHEMA_VERSION
+    meta["migration_target_schema_version"] = PROJECT_SCHEMA_VERSION
+    meta["migration_complete"] = True
     meta.setdefault("app_name", "Segmental Box Girder Pro")
     meta.setdefault("dataset_status", "BG40 R10 report-driven baseline loaded")
     meta.setdefault("schema_note", "Report-driven chapter/subsection schema for commercial-grade QA, traceability, and future report export.")
     return data
+
+
+def ensure_project_schema(
+    project: Dict,
+    *,
+    copy_project: bool = True,
+    source_schema_version: str | None = None,
+) -> Dict:
+    """Return a project dictionary migrated to the active commercial schema.
+
+    Existing callers retain copy-on-migrate behavior by default.  The JSON loader
+    passes ``copy_project=False`` because its decoded object is already private,
+    avoiding a second full-project deepcopy.  A fully migrated session project is
+    returned immediately when no copy was requested.
+    """
+    if not isinstance(project, dict):
+        raise TypeError("Project must be a dictionary before schema migration.")
+    if project_schema_is_current(project) and not copy_project:
+        return project
+
+    data = deepcopy(project) if copy_project else project
+    return _migrate_project_schema_in_place(
+        data,
+        source_schema_version=source_schema_version,
+    )
 
 
 def issue_counts(issues: Iterable[ValidationIssue]) -> Dict[str, int]:

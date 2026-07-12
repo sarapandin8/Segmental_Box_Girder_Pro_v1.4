@@ -109,12 +109,53 @@ def test_fea5d1_project_load_summary_exposes_source_and_app_schema_trace():
 
     summary = project_load_summary({
         "meta": {
-            "schema_version": "0.5.8-commercial-fea5d1-final-service-component-review-closeout",
+            "schema_version": "0.5.9-commercial-fea5d1a-legacy-project-load-single-pass-hotfix",
             "loaded_schema_version": "0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
             "schema_migration_status": "Migrated from 0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
         },
         "project": {"name": "BG40", "bridge_object": "B2_SPAN1"},
     })
-    assert summary["schema_version"].startswith("0.5.8-")
+    assert summary["schema_version"].startswith("0.5.9-")
     assert summary["loaded_schema_version"].startswith("0.5.6-")
     assert summary["schema_migration_status"].startswith("Migrated from")
+
+
+def test_fea5d1a_declared_file_schema_wins_over_historical_origin() -> None:
+    legacy = json.loads(json.dumps(BG40_DEFAULT))
+    legacy["meta"].update({
+        "schema_version": "0.5.5-commercial-fea5c-transfer-stage-simultaneous-force-review",
+        "loaded_schema_version": "0.4.20-commercial-bugfix1-section-save-load-persistence",
+    })
+    legacy["meta"].pop("migration_complete", None)
+    legacy["meta"].pop("migration_target_schema_version", None)
+
+    loaded = load_project_json_bytes(json.dumps(legacy).encode("utf-8"), "legacy.json")
+    meta = loaded["meta"]
+
+    assert meta["source_file_schema_version"].startswith("0.5.5-")
+    assert meta["loaded_schema_version"].startswith("0.5.5-")
+    assert meta["historical_origin_schema_version"].startswith("0.4.20-")
+    assert meta["schema_migration_status"].startswith("Migrated from 0.5.5-")
+    assert meta["migration_complete"] is True
+
+
+def test_fea5d1a_current_schema_no_copy_fast_path_returns_same_object() -> None:
+    from core.validation import ensure_project_schema, project_schema_is_current
+
+    current = json.loads(json.dumps(BG40_DEFAULT))
+    assert project_schema_is_current(current)
+    assert ensure_project_schema(current, copy_project=False) is current
+
+
+def test_fea5d1a_memory_safe_save_does_not_mutate_current_project_meta() -> None:
+    from core.project_io import serialize_project_json_bytes
+
+    current = json.loads(json.dumps(BG40_DEFAULT))
+    before_meta = dict(current["meta"])
+    saved = serialize_project_json_bytes(current)
+
+    assert current["meta"] == before_meta
+    assert b'\n  "' not in saved  # compact JSON, not pretty-printed duplicate payload
+    reloaded = load_project_json_bytes(saved, "saved-current.json")
+    assert reloaded["meta"]["schema_version"] == PROJECT_SCHEMA_VERSION
+    assert reloaded["meta"]["schema_migration_status"] == "Current"

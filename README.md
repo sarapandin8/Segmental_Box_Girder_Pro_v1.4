@@ -1,3 +1,24 @@
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5D1A
+
+This milestone adds **COMMERCIAL.FEA.5D1A — Legacy Project Load Single-Pass Migration and Memory-Safe Save Hotfix** on the accepted `COMMERCIAL.FEA.5D1` source-review baseline.
+
+## Scope implemented
+
+- Stores only raw immutable JSON bytes in the pending Streamlit load state; decoding and schema migration occur once at the top of the next rerun before widget keys exist.
+- Removes the second migration from `_apply_pending_project_json_load` and removes unconditional full-project migration/deepcopy from every Streamlit rerun.
+- Adds an explicit current-schema fast path using `migration_complete` and `migration_target_schema_version`.
+- Uses the file's declared `meta.schema_version` as the source-file schema. Historical `loaded_schema_version` is retained separately as provenance and no longer forces repeated migration from an older origin.
+- Keeps the active project unchanged when a legacy load fails and reports the failure in the sidebar.
+- Makes Save memory-safer by shallow-copying metadata only for current projects and emitting compact UTF-8 JSON instead of deep-copying and re-migrating the whole project.
+- Preserves all section, tendon, ULS, Transfer, and Final Service source records.
+- Retains `plotly==5.24.1` for verified Streamlit Cloud compatibility.
+
+Schema:
+
+- `0.5.9-commercial-fea5d1a-legacy-project-load-single-pass-hotfix`
+
+---
+
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5D1
 
 This milestone closes **COMMERCIAL.FEA.5D1 — Final Service Component Review and Schema-Trace Closeout** on the accepted `COMMERCIAL.FEA.5D` source-safe calculation baseline.
