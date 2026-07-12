@@ -1,10 +1,10 @@
 """Commercial FEA result-review figures for Segmental Box Girder Pro.
 
-The figures in this module are review-only. ULS figures visualize source-traced
-scalar component envelopes and never synthesize simultaneous force vectors.
-Transfer-stage figures visualize validated SINGLE STATE rows whose P-V2-T-M3
-components are simultaneous at each section cut. No figure feeds downstream
-design checks in this milestone.
+The figures in this module are review-only. ULS and Final Service SLS figures
+visualize source-traced scalar component envelopes and never synthesize
+simultaneous force vectors. Transfer-stage figures visualize validated SINGLE
+STATE rows whose P-V2-T-M3 components are simultaneous at each section cut. No
+figure feeds downstream design checks in this milestone.
 """
 
 from __future__ import annotations
@@ -179,13 +179,15 @@ def dominant_component_sources(payload: dict[str, Any], component: str) -> dict[
     return result
 
 
-def uls_component_envelope_figure(
+def _component_envelope_figure(
     payload: dict[str, Any],
     component: str,
     *,
     bridge_object: str = "",
+    stage_title: str,
+    source_caption: str,
 ) -> go.Figure:
-    """Build a commercial ULS scalar-envelope review chart.
+    """Build a commercial source-traced scalar-envelope review chart.
 
     The upper and lower traces are independent scalar extrema. The function does
     not pair P-M3 or V2-T and therefore preserves the source-semantics guard.
@@ -198,7 +200,7 @@ def uls_component_envelope_figure(
     if frame.empty:
         return apply_engineering_figure_layout(
             fig,
-            title=f"ULS {meta['title']} Envelope — no source data",
+            title=f"{stage_title} {meta['title']} Envelope — no source data",
             x_title="Distance from left end of span (m)",
             y_title=meta["axis"],
             height=560,
@@ -303,8 +305,8 @@ def uls_component_envelope_figure(
 
     span_text = bridge_object or ", ".join(payload.get("bridge_objects", [])) or "Active span"
     title = (
-        f"<b>ULS {meta['title']} Envelope</b>"
-        f"<br><span style='font-size:12px'>CSiBridge scalar component envelope · {meta['mapping']} · {span_text}</span>"
+        f"<b>{stage_title} {meta['title']} Envelope</b>"
+        f"<br><span style='font-size:12px'>{source_caption} · {meta['mapping']} · {span_text}</span>"
     )
     apply_engineering_figure_layout(
         fig,
@@ -336,6 +338,43 @@ def uls_component_envelope_figure(
         tickformat=".3~f",
     )
     return fig
+
+
+def uls_component_envelope_figure(
+    payload: dict[str, Any],
+    component: str,
+    *,
+    bridge_object: str = "",
+) -> go.Figure:
+    """Build a commercial ULS scalar-envelope review chart."""
+    return _component_envelope_figure(
+        payload,
+        component,
+        bridge_object=bridge_object,
+        stage_title="ULS",
+        source_caption="CSiBridge scalar component envelope",
+    )
+
+
+def service_component_envelope_figure(
+    payload: dict[str, Any],
+    component: str,
+    *,
+    bridge_object: str = "",
+) -> go.Figure:
+    """Build a Final Service SLS scalar-envelope review chart.
+
+    The source may contain both COMPONENT ENVELOPE and SINGLE STATE rows. The
+    chart therefore shows independent scalar upper/lower bounds across all
+    validated candidates and never implies one simultaneous force vector.
+    """
+    return _component_envelope_figure(
+        payload,
+        component,
+        bridge_object=bridge_object,
+        stage_title="Final Service SLS",
+        source_caption="CSiBridge mixed-source scalar envelope",
+    )
 
 
 def transfer_component_frame(payload: dict[str, Any], component: str) -> pd.DataFrame:
@@ -539,6 +578,7 @@ __all__ = [
     "component_envelope_frame",
     "governing_component_envelope",
     "uls_component_envelope_figure",
+    "service_component_envelope_figure",
     "transfer_component_frame",
     "governing_transfer_component",
     "transfer_component_figure",

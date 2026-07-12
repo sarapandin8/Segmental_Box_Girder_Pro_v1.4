@@ -127,6 +127,7 @@ from visualization.fea_figures import (
     dominant_component_sources,
     governing_component_envelope,
     governing_transfer_component,
+    service_component_envelope_figure,
     transfer_component_figure,
     transfer_component_frame,
     uls_component_envelope_figure,
@@ -1863,8 +1864,9 @@ def render_sidebar() -> None:
                         "subpage": get_workspace(WORKSPACE_LABELS[0])["subpages"][0],
                         "fingerprint": upload_fp,
                         "message": (
-                            f"Loaded project {summary['project']} / {summary['bridge_object']} "
-                            f"with schema {summary['schema_version']}."
+                            f"Loaded project {summary['project']} / {summary['bridge_object']} · "
+                            f"source schema {summary['loaded_schema_version']} · "
+                            f"app schema {summary['schema_version']} · {summary['schema_migration_status']}."
                         ),
                     }
                     st.rerun()
@@ -9961,44 +9963,31 @@ def _render_fea_stage_header(stage: str, payload: dict[str, Any]) -> bool:
     return True
 
 
-def _render_fea_envelope_stage(stage: str, *, default_components: list[str]) -> None:
-    payload = _fea_stage_imports().get(stage, {})
-    if not _render_fea_stage_header(stage, payload):
-        return
-    st.markdown(
-        '<div class="warn-box"><b>Envelope semantics:</b> rows labelled <b>COMPONENT ENVELOPE</b> are CSiBridge '
-        'Max/Min component output; P (Axial), V2 (Vy), T (Torsion), and M3 (Mx) in the same row are not assumed simultaneous. '
-        'The compact table contains separate scalar extrema with separate sources. <b>Sections 6–8 are not yet connected</b> '
-        'to this source package. A future design connection must either use verified SINGLE STATE rows, a conservative '
-        'component-bound route, or a non-envelope CSiBridge export.</div>',
-        unsafe_allow_html=True,
-    )
+def _render_fea_service_scalar_audit(payload: dict[str, Any]) -> None:
+    """Render the wide station-by-station scalar-bound table as detailed QA only.
 
+    The commercial Final Service review is component-first: Summary, P, V2, T,
+    and M3 charts remain the primary workspace. This helper deliberately keeps
+    the legacy wide table behind an expander so it cannot replace the chart
+    review page or imply simultaneous force vectors.
+    """
     choices = {
         "Flexure / axial scalar bounds — P (Axial), M3 (Mx)": ["P", "M3"],
         "Shear / torsion scalar bounds — V2 (Vy), T (Torsion)": ["V2", "T"],
         "All scalar extrema": list(FORCE_COMPONENTS),
     }
-    default_label = next((label for label, comps in choices.items() if comps == default_components), list(choices)[0])
     view = st.radio(
-        "Envelope view",
+        "Detailed scalar-bound audit view",
         list(choices),
-        index=list(choices).index(default_label),
         horizontal=True,
-        key=f"fea_{stage}_envelope_view",
+        key="fea_service_scalar_audit_view",
+    )
+    st.caption(
+        "Detailed QA only. Every min/max column retains its own source trace; "
+        "the table does not create a simultaneous P–M3 or V2–T force pair."
     )
     frame = _fea_envelope_frame(payload, choices[view])
-    st.dataframe(frame, width="stretch", hide_index=True, height=620)
-
-    st.markdown("#### Global source-traced extrema")
-    show_engineering_table(_fea_global_extrema_frame(payload))
-    if _trace_toggle(f"{STAGE_LABELS[stage]} raw source rows / QA", default=False):
-        raw = pd.DataFrame(payload.get("records", []))
-        st.caption(
-            f"Raw source rows retained: {len(raw):,}. SourceState identifies SINGLE STATE versus COMPONENT ENVELOPE. "
-            "No synthetic P (Axial)–M3 (Mx) or V2 (Vy)–T (Torsion) pairing is created from separate extrema."
-        )
-        st.dataframe(raw, width="stretch", hide_index=True, height=620)
+    st.dataframe(frame, width="stretch", hide_index=True, height=520)
 
 
 TRANSFER_COMPONENT_SECTIONS = {"P": "5.3.1", "V2": "5.3.2", "T": "5.3.3", "M3": "5.3.4"}
@@ -10166,11 +10155,224 @@ def _render_transfer_stage() -> None:
         _render_fea_transfer_component(payload, selected)
 
 
+SERVICE_COMPONENT_SECTIONS = {"P": "5.4.1", "V2": "5.4.2", "T": "5.4.3", "M3": "5.4.4"}
+
+
+def _service_case_semantics_text(payload: dict[str, Any]) -> str:
+    envelope_cases: list[str] = []
+    single_cases: list[str] = []
+    for row in payload.get("case_summary", []) if isinstance(payload, dict) else []:
+        case = str(row.get("OutputCase") or "-")
+        semantics = str(row.get("Source semantics") or "")
+        if SOURCE_STATE_COMPONENT_ENVELOPE in semantics:
+            envelope_cases.append(case)
+        elif SOURCE_STATE_SINGLE in semantics:
+            single_cases.append(case)
+    envelope_text = ", ".join(envelope_cases) or "none"
+    single_text = ", ".join(single_cases) or "none"
+    return (
+        f"Source composition — COMPONENT ENVELOPE: {envelope_text}; "
+        f"SINGLE STATE: {single_text}."
+    )
+
+
+def _render_fea_service_summary(payload: dict[str, Any]) -> None:
+    summary = payload.get("summary", {})
+    cards = st.columns(4)
+    for column, component in zip(cards, FORCE_COMPONENTS):
+        meta = FORCE_COMPONENT_META[component]
+        governing = governing_component_envelope(payload, component)
+        with column:
+            if governing:
+                card(
+                    meta["metric"],
+                    f"{governing['absolute']:,.2f} {meta['unit']}",
+                    f"Signed {governing['value']:,.2f} · Cut {governing['sect_cut_num']} · x={governing['distance_m']:.4f} m",
+                    "",
+                )
+            else:
+                card(meta["metric"], "NOT AVAILABLE", "No Final Service scalar source is available.", "warn")
+
+    st.markdown(
+        '<div class="warn-box"><b>Final Service SLS scalar-bound semantics:</b> this summary compares independent '
+        'component extrema across all validated Final Service candidates. A source row labelled <b>SINGLE STATE</b> '
+        'is simultaneous only within that original row; a row labelled <b>COMPONENT ENVELOPE</b> is component-wise '
+        'Max/Min output. The four governing values below may come from different cases, source states, and section cuts '
+        'and therefore are not one force vector. <b>Sections 8–9 remain disconnected</b> from this review page.</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(_service_case_semantics_text(payload))
+
+    rows: list[list[Any]] = []
+    for component in FORCE_COMPONENTS:
+        meta = FORCE_COMPONENT_META[component]
+        governing = governing_component_envelope(payload, component)
+        if not governing:
+            continue
+        rows.append(
+            [
+                meta["title"],
+                f"{governing['absolute']:,.3f}",
+                f"{governing['value']:,.3f}",
+                meta["unit"],
+                governing["sect_cut_num"],
+                f"{governing['distance_m']:.4f}",
+                governing["loc_type"],
+                governing["source"],
+            ]
+        )
+    st.markdown("#### Governing Final Service scalar-force summary")
+    show_engineering_table(
+        pd.DataFrame(
+            rows,
+            columns=["Force / app axis", "Maximum absolute", "Signed value", "Unit", "SectCutNum", "x (m)", "LocType", "Source trace"],
+        )
+    )
+
+    with st.expander("Detailed mixed-source scalar-bound audit", expanded=False):
+        _render_fea_service_scalar_audit(payload)
+
+    cols = st.columns(4)
+    with cols[0]:
+        card("FINAL SERVICE SOURCE", "READY", str(payload.get("filename") or "-"), "pass")
+    with cols[1]:
+        card(
+            "SECTION CUTS",
+            str(int(summary.get("sect_cuts", 0))),
+            f"x = {float(summary.get('distance_min_m', 0.0)):.4f}–{float(summary.get('distance_max_m', 0.0)):.4f} m",
+            "",
+        )
+    with cols[2]:
+        card("OUTPUT CASES", str(int(summary.get("output_cases", 0))), _fea_semantics_case_display(payload), "")
+    with cols[3]:
+        card("DOWNSTREAM", "NOT YET CONNECTED", "SLS Stress / Deflection review only", "warn")
+
+
+def _render_fea_service_component(payload: dict[str, Any], component: str) -> None:
+    meta = FORCE_COMPONENT_META[component]
+    governing = governing_component_envelope(payload, component)
+    source_text = str(governing.get("source") or "-")
+    source_head, source_detail = (
+        source_text.split(" · ", 1)
+        if " · " in source_text
+        else (source_text, "Source-traced scalar extremum")
+    )
+    source_mode = "warn" if SOURCE_STATE_COMPONENT_ENVELOPE in source_text else ""
+
+    columns = st.columns(4)
+    with columns[0]:
+        card("FORCE REVIEW STATUS", "SOURCE READY", "Final Service scalar-envelope review · no stress/deflection check", "pass")
+    with columns[1]:
+        card(
+            meta["metric"],
+            f"{governing.get('absolute', 0.0):,.2f} {meta['unit']}",
+            f"Signed value {governing.get('value', 0.0):,.2f} {meta['unit']}",
+            "",
+        )
+    with columns[2]:
+        card(
+            "GOVERNING LOCATION",
+            f"Cut {governing.get('sect_cut_num', '-')} · x={governing.get('distance_m', 0.0):.4f} m",
+            str(governing.get("loc_type") or "-"),
+            "",
+        )
+    with columns[3]:
+        card("GOVERNING SOURCE", source_head, source_detail, source_mode)
+
+    st.caption(_fea_dominant_source_text(payload, component))
+    fig = service_component_envelope_figure(
+        payload,
+        component,
+        bridge_object=str(D.get("project", {}).get("bridge_object", "")),
+    )
+    show_plotly(fig)
+    st.caption(
+        f"{meta['upper']} and {meta['lower']} are source-traced Final Service scalar bounds at each SectCutNum. "
+        "Individual SINGLE STATE source rows retain simultaneous companion actions, but extrema selected across cases "
+        "and source states do not create a P–M3 or V2–T design-force pair. This review does not yet feed Sections 8–9."
+    )
+
+    frame = component_envelope_frame(payload, component)
+    if not frame.empty:
+        compact = frame[[
+            "SectCutNum", "Distance", "LocType", "Lower", "Upper", "GoverningValue", "GoverningSource",
+        ]].copy()
+        compact["Distance"] = compact["Distance"].map(lambda value: f"{float(value):.4f}")
+        compact.columns = [
+            "SectCutNum", "Distance (m)", "LocType",
+            f"{meta['title']} min ({meta['unit']})",
+            f"{meta['title']} max ({meta['unit']})",
+            f"Governing signed {meta['title']} ({meta['unit']})",
+            "Governing source",
+        ]
+        st.markdown(f"#### Final Service {meta['title']} scalar envelope table")
+        st.dataframe(compact, width="stretch", hide_index=True, height=430)
+
+        if _trace_toggle(f"Detailed Final Service {meta['title']} scalar envelope / QA", default=False):
+            detailed = frame[[
+                "SectCutNum", "Distance", "LocType", "CandidateRows", "Lower", "LowerSource", "Upper", "UpperSource",
+                "GoverningValue", "GoverningSource",
+            ]].copy()
+            detailed["Distance"] = detailed["Distance"].map(lambda value: f"{float(value):.4f}")
+            detailed.columns = [
+                "SectCutNum", "Distance (m)", "LocType", "Candidate rows",
+                f"{meta['title']} min ({meta['unit']})", "Min source",
+                f"{meta['title']} max ({meta['unit']})", "Max source",
+                f"Governing signed {meta['title']} ({meta['unit']})", "Governing source",
+            ]
+            st.dataframe(detailed, width="stretch", hide_index=True, height=540)
+
+    if _trace_toggle(f"{meta['title']} raw Final Service SLS source rows / QA", default=False):
+        raw = pd.DataFrame(payload.get("records", []))
+        columns = ["SourceRow", "SectCutNum", "Distance", "LocType", "OutputCase", "StepType", "SourceState", component]
+        st.dataframe(raw[columns] if not raw.empty else raw, width="stretch", hide_index=True, height=620)
+
+
+def _render_final_service_sls() -> None:
+    payload = _fea_stage_imports().get("service", {})
+    if not _render_fea_stage_header("service", payload):
+        return
+
+    summary = payload.get("summary", {})
+    st.markdown(
+        f'<div class="note-box"><b>Final Service SLS force review:</b> {escape(str(payload.get("filename") or "-"))} · '
+        f'{int(summary.get("sect_cuts", 0))} section cuts · {int(summary.get("output_cases", 0))} output cases · '
+        f'{escape(_fea_semantics_case_display(payload))}. The app retains source-row semantics and builds only '
+        'source-traced scalar bounds for this review.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(_fea_axis_convention_html(), unsafe_allow_html=True)
+
+    view_labels = {
+        "summary": "Summary",
+        "P": "P (Axial)",
+        "V2": "V2 (Vy)",
+        "T": "T (Torsion)",
+        "M3": "M3 (Mx)",
+    }
+    if st.session_state.get("fea_service_force_review_subpage") not in view_labels:
+        st.session_state.fea_service_force_review_subpage = "summary"
+    selected = st.radio(
+        "Final Service SLS force review subpage",
+        list(view_labels),
+        format_func=lambda key: view_labels[key],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="fea_service_force_review_subpage",
+    )
+    active_title = "Final Service Summary" if selected == "summary" else f"{SERVICE_COMPONENT_SECTIONS[selected]} {FORCE_COMPONENT_META[selected]['title']}"
+    st.caption(f"Active review: {active_title} · component-first mixed-source scalar-envelope review; source semantics are preserved.")
+    if selected == "summary":
+        _render_fea_service_summary(payload)
+    else:
+        _render_fea_service_component(payload, selected)
+
+
 def _render_fea_import_hub() -> None:
     st.markdown(
-        '<div class="note-box"><b>FEA.5C1 source policy:</b> upload separate CSiBridge <b>ULS</b>, '
+        '<div class="note-box"><b>FEA.5D source policy:</b> upload separate CSiBridge <b>ULS</b>, '
         '<b>Transfer Stage</b>, and <b>Final Service SLS</b> Bridge Object Forces workbooks. This page validates and '
-        'stores source data only; Sections 6–8 are not yet connected.</div>',
+        'stores source data only; Sections 6–9 are not yet connected.</div>',
         unsafe_allow_html=True,
     )
     with st.expander("Source import and envelope policy", expanded=False):
@@ -10255,7 +10457,7 @@ def _render_fea_import_hub() -> None:
     with cols[2]:
         card("FEA SOURCE PACKAGE", package["status"], package["note"], package["mode"])
     with cols[3]:
-        card("DOWNSTREAM CONNECTION", downstream_status, "Sections 6–8 still use BG40/keyed demands." if downstream_status != "CONNECTED" else "Imported source package is connected to downstream checks.", "warn" if downstream_status != "CONNECTED" else "pass")
+        card("DOWNSTREAM CONNECTION", downstream_status, "Sections 6–9 still use BG40/keyed demands." if downstream_status != "CONNECTED" else "Imported source package is connected to downstream checks.", "warn" if downstream_status != "CONNECTED" else "pass")
 
 
 def _render_fea_source_qa() -> None:
@@ -10324,7 +10526,7 @@ def page_fea_results(sub: str) -> None:
     elif sub == "5.3 Transfer Stage":
         _render_transfer_stage()
     elif sub in {"5.3 SLS Envelope", "5.4 Final Service SLS"}:
-        _render_fea_envelope_stage("service", default_components=["P", "M3"])
+        _render_final_service_sls()
     else:
         _render_fea_source_qa()
 
@@ -10471,7 +10673,7 @@ def render_report_qa_fea_source_snapshot() -> None:
         consistency = package["station_consistency"]
         card("STATION MAP", consistency["status"], consistency["note"], consistency["mode"])
     with cols[2]:
-        card("DOWNSTREAM CONNECTION", downstream_status, "Sections 6–8 still use BG40/keyed demands." if downstream_status != "CONNECTED" else "Current imported package feeds downstream checks.", "warn" if downstream_status != "CONNECTED" else "pass")
+        card("DOWNSTREAM CONNECTION", downstream_status, "Sections 6–9 still use BG40/keyed demands." if downstream_status != "CONNECTED" else "Current imported package feeds downstream checks.", "warn" if downstream_status != "CONNECTED" else "pass")
     rows = []
     for stage in ("uls", "transfer", "service"):
         payload = imports.get(stage, {})
@@ -10480,7 +10682,7 @@ def render_report_qa_fea_source_snapshot() -> None:
         semantics = payload.get("source_semantics", {}) if isinstance(payload, dict) else {}
         rows.append([STAGE_LABELS[stage], payload.get("filename", "-"), payload.get("sha256_12", "-"), int(summary.get("rows", 0)), int(summary.get("sect_cuts", 0)), semantics.get("overall", "-"), state["status"]])
     show_engineering_table(pd.DataFrame(rows, columns=["Stage", "Filename", "SHA-256 (12)", "Raw rows", "Section cuts", "Source semantics", "Status"]))
-    st.caption("Read-only source trace. Report / QA does not run flexure, shear/torsion, or SLS stress solvers.")
+    st.caption("Read-only source trace. Report / QA does not run flexure, shear/torsion, SLS stress, or deflection solvers.")
 
 
 def page_report_qa(sub: str) -> None:
@@ -10529,7 +10731,7 @@ def page_report_qa(sub: str) -> None:
 ## FEA Source Package
 - Section 5 source-package status = {source_package_gate(_fea_stage_imports(), str(D.get('project', {}).get('bridge_object', '')))['status']}
 - Downstream connection = {D.get('fea_results', {}).get('downstream_connection', {}).get('status', 'NOT YET CONNECTED')}
-- Sections 6–8 remain on existing BG40/keyed demands until a separately reviewed connection milestone.
+- Sections 6–9 remain on existing BG40/keyed demands until a separately reviewed connection milestone.
 
 ## QA Gate
 - Errors: {counts['ERROR']}
@@ -10595,6 +10797,12 @@ def render_project_save_panel() -> None:
         st.caption(
             f"Tendon source adopted: {'yes' if tendon_source_adopted else 'no'} · "
             "Project snapshot available: yes"
+        )
+        meta = project.get("meta", {}) if isinstance(project, dict) else {}
+        st.caption(
+            f"App schema: {PROJECT_SCHEMA_VERSION} · "
+            f"Loaded source schema: {meta.get('loaded_schema_version', '-')} · "
+            f"Migration: {meta.get('schema_migration_status', 'Current')}"
         )
         st.download_button(
             "Save Project JSON",

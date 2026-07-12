@@ -6,7 +6,7 @@ calculation-engine inputs from M1. Internal UI units are kN, m, MPa, and mm.
 
 BG40_DEFAULT = {
     "meta": {
-        "schema_version": "0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
+        "schema_version": "0.5.8-commercial-fea5d1-final-service-component-review-closeout",
         "app_name": "Segmental Box Girder Pro",
         "dataset_status": "BG40 baseline loaded; AASHTO LRFD 2020 Section 5 governing concrete design basis and DPT seismic database active",
         "schema_note": "Report-driven workspace/subpage schema for commercial-grade QA, traceability, and future report export.",
@@ -286,7 +286,7 @@ BG40_DEFAULT = {
         "source_note": "Import CSiBridge tendon General / Vertical / Horizontal tables to generate layout figures, then explicitly adopt the tendon model before downstream use.",
     },
     "fea_results": {
-        "source_status": "FEA.5C1 three-stage CSiBridge review with signed Transfer-stage governing display consistency; downstream design remains disconnected.",
+        "source_status": "FEA.5D three-stage CSiBridge review with ULS, Transfer, and Final Service SLS force-review workspaces; downstream design remains disconnected.",
         "axis_convention": {
             "status": "CONFIRMED FOR ACTIVE APP AXES",
             "source_program": "CSiBridge",
@@ -308,7 +308,7 @@ BG40_DEFAULT = {
             "status": "NOT YET CONNECTED",
             "connected_modules": [],
             "source_package_fingerprint": "",
-            "note": "Sections 6–8 continue to use existing BG40/keyed demands until a separately reviewed connection milestone is implemented.",
+            "note": "Sections 6–9 continue to use existing BG40/keyed demands until a separately reviewed connection milestone is implemented.",
         },
         "envelope_interpretation": "SINGLE STATE rows preserve simultaneous P-V2-T-M3 vectors. COMPONENT ENVELOPE Max/Min rows may be non-simultaneous. Compact rows store separate scalar extrema and are not one force vector.",
         "permanent_moment_midspan_knm": 47671.0,

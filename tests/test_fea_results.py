@@ -20,6 +20,7 @@ from visualization.fea_figures import (
     dominant_component_sources,
     governing_component_envelope,
     governing_transfer_component,
+    service_component_envelope_figure,
     transfer_component_figure,
     transfer_component_frame,
     uls_component_envelope_figure,
@@ -312,3 +313,43 @@ def test_fea5c1_transfer_negative_governing_value_stays_signed_in_chart_labels()
 def test_fea5c_transfer_rejects_unknown_component():
     with pytest.raises(ValueError, match="Unsupported FEA force component"):
         transfer_component_frame({"records": []}, "V3")
+
+
+def test_fea5d_final_service_mixed_source_scalar_review_and_chart():
+    rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "S1A", "Combination", "Max", -10, 25, 2, 80],
+        ["B2_SPAN1", 1, 0.0, "After", "S1A", "Combination", "Min", -40, -30, -4, -60],
+        ["B2_SPAN1", 1, 0.0, "After", "S2", "Combination", "", -20, 10, 1, 50],
+        ["B2_SPAN1", 2, 39.95, "Before", "S1A", "Combination", "Max", -12, 45, 3, 150],
+        ["B2_SPAN1", 2, 39.95, "Before", "S1A", "Combination", "Min", -35, -25, -5, -90],
+        ["B2_SPAN1", 2, 39.95, "Before", "S2", "Combination", "", -18, 15, 2, 70],
+    ]
+    payload = read_csibridge_force_workbook(_workbook_bytes(rows), filename="service.xlsx", stage="service")
+    assert payload["source_semantics"]["overall"] == "MIXED"
+    assert payload["source_semantics"]["single_state_rows"] == 2
+    assert payload["source_semantics"]["component_envelope_rows"] == 4
+
+    frame = component_envelope_frame(payload, "M3")
+    assert list(frame["SectCutNum"]) == [1, 2]
+    assert frame.loc[1, "Upper"] == 150.0
+    assert "S1A / Max" in frame.loc[1, "UpperSource"]
+    governing = governing_component_envelope(payload, "M3")
+    assert governing["absolute"] == 150.0
+    assert governing["distance_m"] == 39.95
+    assert "COMPONENT ENVELOPE" in governing["source"]
+
+    fig = service_component_envelope_figure(payload, "M3", bridge_object="B2_SPAN1")
+    assert len(fig.data) == 3
+    assert fig.data[0].name == "M3 max"
+    assert fig.data[1].line.dash == "dash"
+    assert fig.data[2].name == "Governing |M3| (Mx)"
+    assert "Final Service SLS M3 (Mx) Envelope" in fig.layout.title.text
+    assert "CSiBridge mixed-source scalar envelope" in fig.layout.title.text
+    assert "M3 → Mx" in fig.layout.title.text
+    assert fig.layout.annotations[0].ax < 0
+    assert fig.layout.annotations[0].xanchor == "right"
+
+
+def test_fea5d_final_service_figure_rejects_unknown_component():
+    with pytest.raises(ValueError, match="Unsupported FEA force component"):
+        service_component_envelope_figure({"envelopes": []}, "V3")

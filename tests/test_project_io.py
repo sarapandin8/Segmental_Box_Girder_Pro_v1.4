@@ -102,3 +102,19 @@ def test_fresh_project_defaults_to_b2_span1_and_loaded_project_span_is_preserved
 
     assert migrated["project"]["bridge_object"] == "USER_SPAN_X"
     assert migrated["tendon_layout"]["active_bridge_object"] == "USER_SPAN_X"
+
+
+def test_fea5d1_project_load_summary_exposes_source_and_app_schema_trace():
+    from core.project_io import project_load_summary
+
+    summary = project_load_summary({
+        "meta": {
+            "schema_version": "0.5.8-commercial-fea5d1-final-service-component-review-closeout",
+            "loaded_schema_version": "0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
+            "schema_migration_status": "Migrated from 0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
+        },
+        "project": {"name": "BG40", "bridge_object": "B2_SPAN1"},
+    })
+    assert summary["schema_version"].startswith("0.5.8-")
+    assert summary["loaded_schema_version"].startswith("0.5.6-")
+    assert summary["schema_migration_status"].startswith("Migrated from")

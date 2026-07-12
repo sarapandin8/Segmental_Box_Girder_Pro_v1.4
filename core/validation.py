@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Iterable, Literal
 
-PROJECT_SCHEMA_VERSION = "0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency"
+PROJECT_SCHEMA_VERSION = "0.5.8-commercial-fea5d1-final-service-component-review-closeout"
 
 IssueLevel = Literal["ERROR", "WARNING", "INFO"]
 
@@ -162,7 +162,7 @@ def _migrate_fea_result_sources(data: Dict) -> None:
     downstream.setdefault("status", "NOT YET CONNECTED")
     downstream.setdefault("connected_modules", [])
     downstream.setdefault("source_package_fingerprint", "")
-    downstream.setdefault("note", "Sections 6–8 continue to use existing BG40/keyed demands until a separately reviewed connection milestone is implemented.")
+    downstream.setdefault("note", "Sections 6–9 continue to use existing BG40/keyed demands until a separately reviewed connection milestone is implemented.")
 
 def _deep_fill_missing(target: Dict, defaults: Dict) -> Dict:
     for key, default_value in defaults.items():
@@ -375,7 +375,7 @@ def validate_project(project: Dict) -> list[ValidationIssue]:
         )
 
     # Section 5 FEA source-package validation. These checks validate imported
-    # source records only; they do not imply that Sections 6–8 consume them yet.
+    # source records only; they do not imply that Sections 6–9 consume them yet.
     from core.fea_results import (
         STAGE_LABELS,
         cross_stage_station_consistency,
@@ -439,7 +439,7 @@ def validate_project(project: Dict) -> list[ValidationIssue]:
                 ValidationIssue(
                     "WARNING",
                     "FEA Results",
-                    "The three-stage FEA source package is ready, but Sections 6–8 are not yet connected to these imported demands.",
+                    "The three-stage FEA source package is ready, but Sections 6–9 are not yet connected to these imported demands.",
                     recommendation="Do not interpret existing Section 6–8 results as calculated from the imported Section 5 sources until a separate connection milestone is completed.",
                     issue_code="FEA_DOWNSTREAM_NOT_CONNECTED",
                 )

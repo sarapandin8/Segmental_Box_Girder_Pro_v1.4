@@ -1,3 +1,45 @@
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5D1
+
+This milestone closes **COMMERCIAL.FEA.5D1 — Final Service Component Review and Schema-Trace Closeout** on the accepted `COMMERCIAL.FEA.5D` source-safe calculation baseline.
+
+## Scope implemented
+
+- Makes `Summary`, `P (Axial)`, `V2 (Vy)`, `T (Torsion)`, and `M3 (Mx)` the only primary Section 5.4 review navigation.
+- Keeps full-span component charts, governing cards, source cases, station identity, compact component tables, and raw-source trace as the commercial review path.
+- Removes the legacy generic envelope-stage renderer so the wide station-by-station table cannot replace the component chart workspace.
+- Retains the wide mixed-source scalar-bound table only inside `Detailed mixed-source scalar-bound audit` on the Summary page.
+- Preserves mixed-source semantics: `COMPONENT ENVELOPE` extrema are independent scalar bounds; `SINGLE STATE` is simultaneous only within its original source row.
+- Clarifies that Final Service downstream targets are Sections `8 SLS Stress` and `9 Deflection`, both still `NOT YET CONNECTED`.
+- Separates active app schema, loaded source schema, and migration status in the Project File panel and load confirmation.
+- Retains `plotly==5.24.1` for verified Streamlit Cloud compatibility.
+
+Schema:
+
+- `0.5.8-commercial-fea5d1-final-service-component-review-closeout`
+
+---
+
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5D
+
+This milestone adds **COMMERCIAL.FEA.5D — Final Service SLS Mixed-Source Force Review** on the accepted `COMMERCIAL.FEA.5C1` Transfer-stage review baseline.
+
+## Scope implemented
+
+- Converts Section `5.4 Final Service SLS` from a raw envelope table into a commercial nested review workspace: `Summary`, `P (Axial)`, `V2 (Vy)`, `T (Torsion)`, and `M3 (Mx)`.
+- Preserves the imported mixed source semantics: `S1A` and `S1B` are `COMPONENT ENVELOPE` Max/Min sources, while `S1C_01`, `S1C_02`, `S2`, `S3_01`, and `S3_02` are `SINGLE STATE` sources.
+- Builds source-traced scalar min/max bounds across all validated Final Service candidates without synthesizing simultaneous `P–M3` or `V2–T` force pairs.
+- Adds full-span source-review charts with governing markers, edge-safe annotations, four-decimal station identity, dominant-source captions, compact envelope tables, and detailed/raw QA toggles.
+- Adds a Final Service Summary with governing absolute magnitude, signed value, governing station, LocType, and exact source row for `P`, `V2`, `T`, and `M3`.
+- States explicitly that an individual `SINGLE STATE` row is simultaneous only within that source row; the global scalar bounds and four governing cards are not one common vector.
+- Keeps Sections `8 SLS Stress` and `9 Deflection` explicitly **NOT YET CONNECTED**. No stress, deflection, or downstream design demand is changed.
+- Retains `plotly==5.24.1` for Streamlit Cloud compatibility.
+
+Schema:
+
+- `0.5.7-commercial-fea5d-final-service-sls-force-review`
+
+---
+
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5C1
 
 This milestone adds **COMMERCIAL.FEA.5C1 — Transfer Signed-Governing Display Consistency** on the accepted `COMMERCIAL.FEA.5C` Transfer-stage review baseline.

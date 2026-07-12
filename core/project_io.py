@@ -94,5 +94,7 @@ def project_load_summary(project: Dict[str, Any]) -> Dict[str, str]:
         "project": str(p.get("name", "-")),
         "bridge_object": str(p.get("bridge_object", "-")),
         "schema_version": str(meta.get("schema_version", "-")),
+        "loaded_schema_version": str(meta.get("loaded_schema_version", meta.get("schema_version", "-"))),
+        "schema_migration_status": str(meta.get("schema_migration_status", "Current")),
         "baseline_report": str(meta.get("baseline_report", "-")),
     }
