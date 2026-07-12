@@ -15,9 +15,25 @@ try:
     faulthandler.enable(file=sys.stderr, all_threads=True)
 except Exception:
     pass
-print("[SBGP STARTUP] Python app script entered", file=sys.stderr, flush=True)
 
 import pandas as pd
+
+# pandas 3.x infers Arrow-backed string columns when PyArrow is installed.
+# This app constructs many mixed engineering tables from list[dict] records;
+# keep legacy object-backed string inference to avoid the native Arrow string
+# conversion path that crashed on Streamlit Cloud (Python 3.14 / PyArrow 25).
+try:
+    pd.options.future.infer_string = False
+except Exception:
+    pass
+
+print(
+    f"[SBGP RUNTIME] pandas={pd.__version__}; "
+    f"infer_string={getattr(pd.options.future, 'infer_string', 'n/a')}",
+    file=sys.stderr,
+    flush=True,
+)
+
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.graph_objects as go
@@ -485,14 +501,6 @@ def _project_widget_epoch() -> int:
     return int(st.session_state.get("project_widget_epoch", 0))
 
 
-def _versioned_upload_key(base: str, *, epoch: int | None = None) -> str:
-    """Return a deployment-scoped uploader key to reject stale browser payloads."""
-    suffix = f"::{PROJECT_SCHEMA_VERSION}"
-    if epoch is not None:
-        suffix += f"::{int(epoch)}"
-    return f"{base}{suffix}"
-
-
 def _project_save_payload() -> bytes:
     """Single save path for the sidebar project JSON download button."""
     return serialize_project_json_bytes(st.session_state.project)
@@ -546,10 +554,6 @@ def _apply_pending_project_json_load() -> None:
             f"app schema {summary['schema_version']} · {summary['schema_migration_status']}."
         )
         st.session_state.pop("project_load_error", None)
-        st.session_state.project_json_loader_visible = False
-        st.session_state.project_json_uploader_epoch = int(
-            st.session_state.get("project_json_uploader_epoch", 0)
-        ) + 1
         if pending.get("fingerprint"):
             st.session_state.project_json_loaded_fingerprint = str(pending["fingerprint"])
     except ProjectJsonLoadError as exc:
@@ -1882,64 +1886,27 @@ def render_sidebar() -> None:
             unsafe_allow_html=True,
         )
         st.markdown("---")
-        st.markdown("**PROJECT LOAD**")
-        st.caption(
-            "The file widget is opened only on demand and is reset for each app schema. "
-            "This prevents a stale browser-side upload from reconnecting to a newly deployed build."
-        )
-        loader_visible = bool(st.session_state.get("project_json_loader_visible", False))
-        if not loader_visible:
-            if st.button(
-                "Open Project JSON loader",
-                key=f"open_project_json_loader::{PROJECT_SCHEMA_VERSION}",
-                use_container_width=True,
-            ):
-                st.session_state.project_json_loader_visible = True
-                st.session_state.project_json_uploader_epoch = int(
-                    st.session_state.get("project_json_uploader_epoch", 0)
-                ) + 1
-                st.rerun()
-        else:
-            upload_epoch = int(st.session_state.get("project_json_uploader_epoch", 0))
-            uploaded = st.file_uploader(
-                "Load Project JSON",
-                type=["json"],
-                key=_versioned_upload_key("project_json_upload", epoch=upload_epoch),
-                max_upload_size=20,
-            )
-            if st.button(
-                "Close and clear selected file",
-                key=f"close_project_json_loader::{PROJECT_SCHEMA_VERSION}::{upload_epoch}",
-                use_container_width=True,
-            ):
-                st.session_state.project_json_loader_visible = False
-                st.session_state.project_json_uploader_epoch = upload_epoch + 1
-                st.session_state.pop("_pending_project_json_load", None)
+        uploaded = st.file_uploader("Load Project JSON", type=["json"], key="project_json_upload")
+        if uploaded is not None:
+            raw_project_json = uploaded.getvalue()
+            upload_fp = project_json_fingerprint(raw_project_json, getattr(uploaded, "name", ""))
+            loaded_fp = st.session_state.get("project_json_loaded_fingerprint")
+            st.caption(f"Selected: {getattr(uploaded, 'name', 'project.json')} · {len(raw_project_json) / 1024:.1f} KB")
+            if loaded_fp == upload_fp:
+                st.success("This uploaded project JSON is already loaded.")
+            if st.button("Load uploaded project", key="load_project_json_button", use_container_width=True):
+                # Store immutable bytes only.  Decoding/migration occurs once at the
+                # top of the next run, before widget keys are instantiated.
+                st.session_state._pending_project_json_load = {
+                    "raw": bytes(raw_project_json),
+                    "filename": getattr(uploaded, "name", "project.json"),
+                    "workspace": WORKSPACE_LABELS[0],
+                    "subpage": get_workspace(WORKSPACE_LABELS[0])["subpages"][0],
+                    "fingerprint": upload_fp,
+                }
+                st.session_state.pop("project_load_message", None)
                 st.session_state.pop("project_load_error", None)
                 st.rerun()
-            if uploaded is not None:
-                upload_name = getattr(uploaded, "name", "project.json")
-                upload_size = int(getattr(uploaded, "size", 0) or 0)
-                st.caption(f"Selected: {upload_name} · {upload_size / 1024:.1f} KB")
-                if st.button(
-                    "Load uploaded project",
-                    key=f"load_project_json_button::{PROJECT_SCHEMA_VERSION}::{upload_epoch}",
-                    use_container_width=True,
-                ):
-                    # Read bytes only after explicit confirmation.  Merely reconnecting
-                    # a browser tab therefore cannot eagerly copy or migrate a stale file.
-                    raw_project_json = uploaded.getvalue()
-                    upload_fp = project_json_fingerprint(raw_project_json, upload_name)
-                    st.session_state._pending_project_json_load = {
-                        "raw": bytes(raw_project_json),
-                        "filename": upload_name,
-                        "workspace": WORKSPACE_LABELS[0],
-                        "subpage": get_workspace(WORKSPACE_LABELS[0])["subpages"][0],
-                        "fingerprint": upload_fp,
-                    }
-                    st.session_state.pop("project_load_message", None)
-                    st.session_state.pop("project_load_error", None)
-                    st.rerun()
         if st.session_state.get("project_load_message"):
             st.success(st.session_state.project_load_message)
         if st.session_state.get("project_load_error"):
@@ -3388,7 +3355,7 @@ def render_section_properties() -> None:
     if selected_section_property_tab == "Coordinate Input":
         c1, c2 = st.columns([1.6, 1.0])
         with c1:
-            uploaded = st.file_uploader("Import CSiBridge section coordinates CSV / Excel", type=["csv", "xlsx", "xls"], key=_versioned_upload_key("section_coordinate_file_upload"), max_upload_size=50)
+            uploaded = st.file_uploader("Import CSiBridge section coordinates CSV / Excel", type=["csv", "xlsx", "xls"], key="section_coordinate_file_upload")
             if uploaded is not None:
                 try:
                     imported = read_coordinate_table(uploaded, getattr(uploaded, "name", ""), coordinate_unit="auto")
@@ -6886,21 +6853,21 @@ def render_tendon_layout_reference() -> None:
                 st.warning("You are opening source replacement controls. Refreshing the working model does not update the adopted design source unless the changed model is reviewed and adopted.")
             c1, c2, c3 = st.columns(3)
             with c1:
-                gen = st.file_uploader("General tendon table (.xlsx/.csv)", type=["xlsx", "xls", "csv"], key=_versioned_upload_key("tendon_general_upload"), max_upload_size=50)
+                gen = st.file_uploader("General tendon table (.xlsx/.csv)", type=["xlsx", "xls", "csv"], key="tendon_general_upload")
                 if gen is not None:
                     try:
                         _parse_and_store_tendon_file(gen, "general")
                     except Exception as exc:  # noqa: BLE001
                         st.error(f"Could not import General tendon table: {exc}")
             with c2:
-                vert = st.file_uploader("Vertical layout table (.xlsx/.csv)", type=["xlsx", "xls", "csv"], key=_versioned_upload_key("tendon_vertical_upload"), max_upload_size=50)
+                vert = st.file_uploader("Vertical layout table (.xlsx/.csv)", type=["xlsx", "xls", "csv"], key="tendon_vertical_upload")
                 if vert is not None:
                     try:
                         _parse_and_store_tendon_file(vert, "vertical")
                     except Exception as exc:  # noqa: BLE001
                         st.error(f"Could not import Vertical tendon table: {exc}")
             with c3:
-                horiz = st.file_uploader("Horizontal layout table (.xlsx/.csv)", type=["xlsx", "xls", "csv"], key=_versioned_upload_key("tendon_horizontal_upload"), max_upload_size=50)
+                horiz = st.file_uploader("Horizontal layout table (.xlsx/.csv)", type=["xlsx", "xls", "csv"], key="tendon_horizontal_upload")
                 if horiz is not None:
                     try:
                         _parse_and_store_tendon_file(horiz, "horizontal")
@@ -10459,7 +10426,7 @@ def _render_fea_import_hub() -> None:
     attempts = _fea_import_attempts()
     for column, (stage, label) in zip(columns, specs):
         with column:
-            uploaded = st.file_uploader(label, type=["xlsx"], key=_versioned_upload_key(f"fea_{stage}_workbook_upload"), max_upload_size=50)
+            uploaded = st.file_uploader(label, type=["xlsx"], key=f"fea_{stage}_workbook_upload")
             _sync_fea_stage_upload(uploaded, stage)
             payload = _fea_stage_imports().get(stage, {})
             status = stage_source_status(payload, str(D.get("project", {}).get("bridge_object", "")))

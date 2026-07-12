@@ -1,23 +1,3 @@
-# Segmental Box Girder Pro — COMMERCIAL.FEA.5D1B
-
-This milestone adds **COMMERCIAL.FEA.5D1B — Upload Widget Session Reset and Native-Crash Diagnostic Hotfix**.
-
-## Scope implemented
-
-- The Project JSON uploader is no longer rendered continuously in the sidebar; it opens only after an explicit user action.
-- Project bytes are read only after the explicit **Load uploaded project** action.
-- All upload widgets use deployment/schema-scoped keys so stale browser-side upload state cannot reconnect to a newly deployed build.
-- Successful Project JSON loads close and rotate the uploader automatically.
-- Adds early `faulthandler` activation through `sitecustomize.py` and `app.py` so a future native SIGSEGV can emit a Python/native stack when possible.
-- Keeps the 5D1A single-pass migration and memory-safe save path.
-- Retains `plotly==5.24.1`.
-
-Schema:
-
-- `0.5.10-commercial-fea5d1b-upload-widget-session-reset-hotfix`
-
----
-
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5D1A
 
 This milestone adds **COMMERCIAL.FEA.5D1A — Legacy Project Load Single-Pass Migration and Memory-Safe Save Hotfix** on the accepted `COMMERCIAL.FEA.5D1` source-review baseline.
@@ -35,7 +15,7 @@ This milestone adds **COMMERCIAL.FEA.5D1A — Legacy Project Load Single-Pass Mi
 
 Schema:
 
-- `0.5.10-commercial-fea5d1b-upload-widget-session-reset-hotfix`
+- `0.5.11-commercial-fea5d1c-pandas-arrow-string-crash-hotfix`
 
 ---
 
@@ -652,3 +632,10 @@ Schema:
 - Governing annotations now move inward automatically when the governing point is near the left or right chart edge, preventing label clipping at end cuts.
 - FEA station identity is displayed to four decimal places in governing cards, summary tables, chart hover text, and compact/detailed scalar-envelope tables.
 - The underlying imported forces, envelopes, source semantics, and downstream-disconnection policy are unchanged.
+
+## Streamlit Cloud native-crash guard
+
+- Production pandas is pinned to `2.3.3` (Python 3.14 compatible).
+- `pd.options.future.infer_string = False` is set immediately after importing pandas.
+- This avoids pandas 3.x automatic Arrow-backed string inference, the exact native path shown in the Streamlit Cloud crash log (`pandas.core.arrays.string_arrow` → `pyarrow.libarrow`).
+- Plotly remains pinned to `5.24.1`.
