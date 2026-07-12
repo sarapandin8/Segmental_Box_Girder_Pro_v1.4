@@ -39,8 +39,11 @@ def test_app_project_json_loader_uses_explicit_button_not_auto_rerun_loop() -> N
     from pathlib import Path
 
     app_text = Path(__file__).resolve().parents[1].joinpath("app.py").read_text(encoding="utf-8")
-    assert 'st.file_uploader("Load Project JSON", type=["json"], key="project_json_upload")' in app_text
-    assert 'st.button("Load uploaded project", key="load_project_json_button"' in app_text
+    assert 'Open Project JSON loader' in app_text
+    assert 'key=_versioned_upload_key("project_json_upload", epoch=upload_epoch)' in app_text
+    assert 'max_upload_size=20' in app_text
+    assert 'raw_project_json = uploaded.getvalue()' in app_text
+    assert app_text.index('raw_project_json = uploaded.getvalue()') > app_text.index('"Load uploaded project",')
     assert 'json.loads(uploaded.read().decode("utf-8"))' not in app_text
 
 
@@ -109,13 +112,13 @@ def test_fea5d1_project_load_summary_exposes_source_and_app_schema_trace():
 
     summary = project_load_summary({
         "meta": {
-            "schema_version": "0.5.9-commercial-fea5d1a-legacy-project-load-single-pass-hotfix",
+            "schema_version": "0.5.10-commercial-fea5d1b-upload-widget-session-reset-hotfix",
             "loaded_schema_version": "0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
             "schema_migration_status": "Migrated from 0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
         },
         "project": {"name": "BG40", "bridge_object": "B2_SPAN1"},
     })
-    assert summary["schema_version"].startswith("0.5.9-")
+    assert summary["schema_version"].startswith("0.5.10-")
     assert summary["loaded_schema_version"].startswith("0.5.6-")
     assert summary["schema_migration_status"].startswith("Migrated from")
 

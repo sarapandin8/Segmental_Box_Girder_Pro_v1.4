@@ -1,3 +1,23 @@
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5D1B
+
+This milestone adds **COMMERCIAL.FEA.5D1B — Upload Widget Session Reset and Native-Crash Diagnostic Hotfix**.
+
+## Scope implemented
+
+- The Project JSON uploader is no longer rendered continuously in the sidebar; it opens only after an explicit user action.
+- Project bytes are read only after the explicit **Load uploaded project** action.
+- All upload widgets use deployment/schema-scoped keys so stale browser-side upload state cannot reconnect to a newly deployed build.
+- Successful Project JSON loads close and rotate the uploader automatically.
+- Adds early `faulthandler` activation through `sitecustomize.py` and `app.py` so a future native SIGSEGV can emit a Python/native stack when possible.
+- Keeps the 5D1A single-pass migration and memory-safe save path.
+- Retains `plotly==5.24.1`.
+
+Schema:
+
+- `0.5.10-commercial-fea5d1b-upload-widget-session-reset-hotfix`
+
+---
+
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5D1A
 
 This milestone adds **COMMERCIAL.FEA.5D1A — Legacy Project Load Single-Pass Migration and Memory-Safe Save Hotfix** on the accepted `COMMERCIAL.FEA.5D1` source-review baseline.
@@ -15,7 +35,7 @@ This milestone adds **COMMERCIAL.FEA.5D1A — Legacy Project Load Single-Pass Mi
 
 Schema:
 
-- `0.5.9-commercial-fea5d1a-legacy-project-load-single-pass-hotfix`
+- `0.5.10-commercial-fea5d1b-upload-widget-session-reset-hotfix`
 
 ---
 
