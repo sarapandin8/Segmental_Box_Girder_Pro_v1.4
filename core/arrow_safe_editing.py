@@ -9,7 +9,12 @@ _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 _FALSE_VALUES = {"0", "false", "no", "n", "off"}
 
 
-def dataframe_to_csv_text(df: pd.DataFrame, columns: Sequence[str] | None = None) -> str:
+def dataframe_to_csv_text(
+    df: pd.DataFrame,
+    columns: Sequence[str] | None = None,
+    *,
+    float_format: str | None = None,
+) -> str:
     """Serialize a small editable engineering table without invoking PyArrow."""
     use = df.copy()
     if columns is not None:
@@ -17,7 +22,7 @@ def dataframe_to_csv_text(df: pd.DataFrame, columns: Sequence[str] | None = None
         for col in missing:
             use[col] = ""
         use = use[list(columns)]
-    return use.to_csv(index=False, lineterminator="\n")
+    return use.to_csv(index=False, lineterminator="\n", float_format=float_format)
 
 
 def _parse_bool(value: object) -> bool:

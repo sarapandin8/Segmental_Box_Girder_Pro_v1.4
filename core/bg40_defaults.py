@@ -6,13 +6,13 @@ calculation-engine inputs from M1. Internal UI units are kN, m, MPa, and mm.
 
 BG40_DEFAULT = {
     "meta": {
-        "schema_version": "0.5.14-commercial-fea5e1a-arrow-free-editable-inputs-hotfix",
-        "source_file_schema_version": "0.5.14-commercial-fea5e1a-arrow-free-editable-inputs-hotfix",
-        "loaded_schema_version": "0.5.14-commercial-fea5e1a-arrow-free-editable-inputs-hotfix",
+        "schema_version": "0.5.15-commercial-ui32a-structured-sdl-and-trace-presets",
+        "source_file_schema_version": "0.5.15-commercial-ui32a-structured-sdl-and-trace-presets",
+        "loaded_schema_version": "0.5.15-commercial-ui32a-structured-sdl-and-trace-presets",
         "schema_migration_status": "Current",
-        "migration_target_schema_version": "0.5.14-commercial-fea5e1a-arrow-free-editable-inputs-hotfix",
+        "migration_target_schema_version": "0.5.15-commercial-ui32a-structured-sdl-and-trace-presets",
         "migration_complete": True,
-        "migration_path": ["0.5.14-commercial-fea5e1a-arrow-free-editable-inputs-hotfix"],
+        "migration_path": ["0.5.15-commercial-ui32a-structured-sdl-and-trace-presets"],
         "app_name": "Segmental Box Girder Pro",
         "dataset_status": "BG40 baseline loaded; AASHTO LRFD 2020 Section 5 governing concrete design basis and DPT seismic database active",
         "schema_note": "Report-driven workspace/subpage schema for commercial-grade QA, traceability, and future report export.",

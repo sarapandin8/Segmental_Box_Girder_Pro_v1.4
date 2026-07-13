@@ -477,6 +477,8 @@ SECTION_TEMPLATE_CSV = "loop_name,point_no,x_mm,y_mm\nStructural Polygon 1,1,0,0
 _PROJECT_LOAD_WIDGET_PREFIXES_TO_CLEAR = (
     "section_coordinate_editor",
     "section_coordinate_file_upload",
+    "sdl_structured_",
+    "sdl_advanced_csv_",
 )
 _PROJECT_LOAD_WIDGET_KEYS_TO_CLEAR = {
     "section_j_source_method",
@@ -1570,10 +1572,11 @@ def render_arrow_free_csv_editor(
     boolean_columns: tuple[str, ...] = (),
     allowed_values: dict[str, list[str]] | None = None,
     height: int = 260,
+    float_format: str | None = None,
 ) -> pd.DataFrame:
     """Edit a compact table through CSV text without Streamlit/PyArrow serialization."""
     if key not in st.session_state:
-        st.session_state[key] = dataframe_to_csv_text(df, columns)
+        st.session_state[key] = dataframe_to_csv_text(df, columns, float_format=float_format)
     st.caption(
         "Arrow-safe editable table: edit the CSV rows directly. Keep the header names unchanged; "
         "changes are validated and synchronized on each rerun."
@@ -1591,6 +1594,158 @@ def render_arrow_free_csv_editor(
     except ValueError as exc:
         st.error(f"Editable table not applied: {exc}")
         return df.copy()
+
+
+def _bump_sdl_structured_editor_epoch() -> None:
+    key = f"sdl_structured_editor_epoch_{_project_widget_epoch()}"
+    st.session_state[key] = int(st.session_state.get(key, 0)) + 1
+
+
+def render_arrow_free_sdl_component_table(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Render the SDL component schedule as native Streamlit row inputs.
+
+    This deliberately avoids ``st.data_editor`` and DataFrame widget serialization.
+    Each cell is a native checkbox, text input, or number input, so the commercial
+    table remains editable without entering the PyArrow crash path.
+    """
+    project_epoch = _project_widget_epoch()
+    epoch_key = f"sdl_structured_editor_epoch_{project_epoch}"
+    editor_epoch = int(st.session_state.get(epoch_key, 0))
+    prefix = f"sdl_structured_{project_epoch}_{editor_epoch}"
+
+    st.caption(
+        "Structured SDL component table — edit each cell directly. Changes feed the SDL totals, "
+        "FEA summary, Save/Load JSON, and report trace immediately."
+    )
+    header = st.columns([0.48, 2.30, 1.12, 1.12, 1.30, 2.15, 0.48], gap="small")
+    labels = ["Include", "Component", "Single Track (kN/m)", "Double Track (kN/m)", "Source", "Note", ""]
+    for col, label in zip(header, labels):
+        col.markdown(f"<div style='font-size:0.73rem;font-weight:700;color:#52637a;padding:0.15rem 0 0.25rem 0'>{escape(label)}</div>", unsafe_allow_html=True)
+
+    updated: list[dict[str, Any]] = []
+    delete_index: int | None = None
+    for index, source_row in enumerate(rows):
+        row = dict(source_row or {})
+        cols = st.columns([0.48, 2.30, 1.12, 1.12, 1.30, 2.15, 0.48], gap="small")
+        include = cols[0].checkbox(
+            f"Include row {index + 1}",
+            value=bool(row.get("Include", True)),
+            key=f"{prefix}_{index}_include",
+            label_visibility="collapsed",
+        )
+        component = cols[1].text_input(
+            f"Component row {index + 1}",
+            value=str(row.get("Component", "")),
+            key=f"{prefix}_{index}_component",
+            label_visibility="collapsed",
+        )
+        single = cols[2].number_input(
+            f"Single Track row {index + 1}",
+            min_value=0.0,
+            value=float(row.get("Single Track (kN/m)", 0.0) or 0.0),
+            step=0.01,
+            format="%.2f",
+            key=f"{prefix}_{index}_single",
+            label_visibility="collapsed",
+        )
+        double = cols[3].number_input(
+            f"Double Track row {index + 1}",
+            min_value=0.0,
+            value=float(row.get("Double Track (kN/m)", 0.0) or 0.0),
+            step=0.01,
+            format="%.2f",
+            key=f"{prefix}_{index}_double",
+            label_visibility="collapsed",
+        )
+        source = cols[4].text_input(
+            f"Source row {index + 1}",
+            value=str(row.get("Source", "")),
+            key=f"{prefix}_{index}_source",
+            label_visibility="collapsed",
+        )
+        note = cols[5].text_input(
+            f"Note row {index + 1}",
+            value=str(row.get("Note", "")),
+            key=f"{prefix}_{index}_note",
+            label_visibility="collapsed",
+        )
+        if cols[6].button("×", key=f"{prefix}_{index}_delete", help=f"Remove {component or 'this component'}"):
+            delete_index = index
+        updated.append(
+            {
+                "Component": component.strip(),
+                "Single Track (kN/m)": float(single),
+                "Double Track (kN/m)": float(double),
+                "Include": bool(include),
+                "Source": source.strip(),
+                "Note": note.strip(),
+            }
+        )
+
+    if delete_index is not None:
+        updated.pop(delete_index)
+        D["load_components"]["sdl_components"] = updated
+        _bump_sdl_structured_editor_epoch()
+        st.rerun()
+
+    c_add, c_note = st.columns([1.0, 3.0])
+    with c_add:
+        if st.button("Add SDL component", key=f"{prefix}_add", width="stretch"):
+            updated.append(
+                {
+                    "Component": "New SDL component",
+                    "Single Track (kN/m)": 0.0,
+                    "Double Track (kN/m)": 0.0,
+                    "Include": True,
+                    "Source": "User input",
+                    "Note": "",
+                }
+            )
+            D["load_components"]["sdl_components"] = updated
+            _bump_sdl_structured_editor_epoch()
+            st.rerun()
+    with c_note:
+        st.caption("Use × to remove a row. Advanced CSV import/export remains available below for bulk editing.")
+    return updated
+
+
+def render_sdl_advanced_csv_tools(rows: list[dict[str, Any]], columns: list[str]) -> None:
+    """Bulk SDL CSV tools kept behind an expander; no automatic text overwrite."""
+    project_epoch = _project_widget_epoch()
+    editor_epoch = int(st.session_state.get(f"sdl_structured_editor_epoch_{project_epoch}", 0))
+    key = f"sdl_advanced_csv_{project_epoch}_{editor_epoch}"
+    current_df = pd.DataFrame(rows, columns=columns)
+    current_csv = dataframe_to_csv_text(current_df, columns, float_format="%.4f")
+    if key not in st.session_state:
+        st.session_state[key] = current_csv
+    with st.expander("Advanced CSV import / export", expanded=False):
+        st.caption("Use this only for bulk edits. The structured table above remains the normal engineering input path.")
+        text = st.text_area("SDL component CSV", key=key, height=280, label_visibility="collapsed")
+        c1, c2, c3 = st.columns([1.0, 1.0, 1.2])
+        if c1.button("Apply CSV to table", key=f"{key}_apply", width="stretch"):
+            try:
+                parsed = parse_csv_editor_text(
+                    text,
+                    columns=columns,
+                    numeric_columns=("Single Track (kN/m)", "Double Track (kN/m)"),
+                    boolean_columns=("Include",),
+                )
+                D["load_components"]["sdl_components"] = parsed.to_dict("records")
+                _bump_sdl_structured_editor_epoch()
+                st.rerun()
+            except ValueError as exc:
+                st.error(f"CSV not applied: {exc}")
+        if c2.button("Refresh from table", key=f"{key}_refresh", width="stretch"):
+            st.session_state[key] = current_csv
+            st.rerun()
+        c3.download_button(
+            "Download SDL CSV",
+            current_csv.encode("utf-8"),
+            "sdl_components.csv",
+            "text/csv",
+            key=f"{key}_download",
+            width="stretch",
+        )
 
 def _normalize_eq_fea_adoption_mode(value: Any) -> str:
     """Return the current EQ FEA adoption mode with legacy wording migrated."""
@@ -2218,18 +2373,11 @@ def page_loads(sub: str) -> None:
         D["bridge_model"]["number_of_tracks"] = selected_track
         st.markdown(f'<div class="note-box"><b>SDL selection rule:</b> Active FEA SDL basis = {selected_track}. The app still keeps both single-track and double-track totals for report traceability.</div>', unsafe_allow_html=True)
 
-        sdl_df = pd.DataFrame(D["load_components"]["sdl_components"])
         sdl_columns = ["Component", "Single Track (kN/m)", "Double Track (kN/m)", "Include", "Source", "Note"]
-        edited = render_arrow_free_csv_editor(
-            sdl_df,
-            key=f"sdl_component_editor_{_project_widget_epoch()}",
-            label="SDL component CSV editor",
-            columns=sdl_columns,
-            numeric_columns=("Single Track (kN/m)", "Double Track (kN/m)"),
-            boolean_columns=("Include",),
-            height=330,
-        )
-        D["load_components"]["sdl_components"] = edited.to_dict("records")
+        with st.container(border=True):
+            structured_rows = render_arrow_free_sdl_component_table(D["load_components"]["sdl_components"])
+        D["load_components"]["sdl_components"] = structured_rows
+        render_sdl_advanced_csv_tools(structured_rows, sdl_columns)
         ld = load_derived()
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -3413,7 +3561,7 @@ def render_section_properties() -> None:
                     if st.session_state.get("section_coordinate_last_upload_token") != upload_token:
                         imported = read_coordinate_table(io.BytesIO(upload_bytes), getattr(uploaded, "name", ""), coordinate_unit="auto")
                         _store_section_coordinate_df(imported)
-                        st.session_state[coord_editor_key] = dataframe_to_csv_text(imported, ["loop_name", "point_no", "x_mm", "y_mm"])
+                        st.session_state[coord_editor_key] = dataframe_to_csv_text(imported, ["loop_name", "point_no", "x_mm", "y_mm"], float_format="%.4f")
                         st.session_state.section_coordinate_last_upload_token = upload_token
                         st.success(f"Imported {len(imported)} coordinate rows. CSiBridge metre-based X/Y coordinates are auto-converted to mm.")
                 except Exception as exc:  # noqa: BLE001
@@ -3423,7 +3571,7 @@ def render_section_properties() -> None:
             if st.button("Load simple hollow-section example", use_container_width=True):
                 example = default_coordinate_template()
                 _store_section_coordinate_df(example)
-                st.session_state[coord_editor_key] = dataframe_to_csv_text(example, ["loop_name", "point_no", "x_mm", "y_mm"])
+                st.session_state[coord_editor_key] = dataframe_to_csv_text(example, ["loop_name", "point_no", "x_mm", "y_mm"], float_format="%.4f")
                 st.rerun()
         coord_df = _section_coordinate_df_from_state()
         if coord_df.empty:
@@ -3439,6 +3587,7 @@ def render_section_properties() -> None:
             integer_columns=("point_no",),
             allowed_values={"loop_name": ["Structural Polygon 1", "Opening Polygon 1"]},
             height=360,
+            float_format="%.4f",
         )
         try:
             _store_section_coordinate_df(normalize_coordinate_rows(edited, coordinate_unit="mm"))
@@ -10685,6 +10834,19 @@ def _render_fea_source_qa() -> None:
         st.caption("These gates are recomputed from the Project JSON payload; stored summary counts are not accepted without reconciliation against the preserved source rows. Gate severity describes the consequence only if a gate fails; a READY row is not currently blocking the source package.")
 
     elif selected_view == "trace":
+        st.caption("Quick verification presets")
+        p1, p2, p3 = st.columns([1.0, 1.0, 2.0])
+        if p1.button("Transfer M3 · |max|", key="fea_qa_trace_preset_transfer_m3", width="stretch"):
+            st.session_state["fea_qa_trace_stage"] = "transfer"
+            st.session_state["fea_qa_trace_component"] = "M3"
+            st.session_state["fea_qa_trace_extremum"] = "absolute"
+            st.rerun()
+        if p2.button("Final Service P · max", key="fea_qa_trace_preset_service_p", width="stretch"):
+            st.session_state["fea_qa_trace_stage"] = "service"
+            st.session_state["fea_qa_trace_component"] = "P"
+            st.session_state["fea_qa_trace_extremum"] = "maximum"
+            st.rerun()
+        p3.caption("These presets exercise the two verified SINGLE STATE trace paths; custom stage/component/extremum selection remains available below.")
         c1, c2, c3 = st.columns(3)
         with c1:
             selected_stage = st.selectbox("Stage", available, format_func=lambda value: STAGE_LABELS[value], key="fea_qa_trace_stage")

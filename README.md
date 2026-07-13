@@ -1,3 +1,23 @@
+# Segmental Box Girder Pro — COMMERCIAL.UI.3.2A
+
+This milestone closes the remaining UI items after the Arrow-free input hotfix.
+
+## Scope implemented
+
+- Replaces the normal 3.2 SDL CSV text block with a structured native Streamlit component table using checkbox, text input, and number input cells.
+- Keeps SDL component totals, adopted values, FEA summary, report trace, and Save/Load JSON on the same source rows.
+- Keeps bulk CSV editing only inside a collapsed Advanced CSV import / export expander.
+- Preserves the permanent ban on `st.data_editor` so editable inputs do not enter the Streamlit/PyArrow native-crash path.
+- Formats Section 2.3 coordinate CSV values to four decimals to remove floating-point display residue without changing stored engineering values.
+- Adds one-click 5.5 Governing Trace presets for Transfer M3 maximum-absolute and Final Service P maximum SINGLE STATE verification.
+- Retains `pandas==2.3.3`, `plotly==5.24.1`, and `pd.options.future.infer_string = False`.
+
+Schema:
+
+- `0.5.15-commercial-ui32a-structured-sdl-and-trace-presets`
+
+---
+
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5E1
 
 This milestone closes **COMMERCIAL.FEA.5E1 — QA Wording and Single-State Trace Closeout** on the accepted `COMMERCIAL.FEA.5E` source-package QA baseline.

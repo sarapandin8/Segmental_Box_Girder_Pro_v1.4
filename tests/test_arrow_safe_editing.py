@@ -35,3 +35,11 @@ def test_sdl_boolean_and_numeric_parsing():
 def test_rejects_changed_headers():
     with pytest.raises(ValueError, match="columns do not match"):
         parse_csv_editor_text("A,B\n1,2\n", columns=["A", "C"])
+
+
+def test_dataframe_to_csv_text_accepts_stable_float_format():
+    source = pd.DataFrame([{"x_mm": 8134.299999999999, "y_mm": 7387.400000000001}])
+    text = dataframe_to_csv_text(source, ["x_mm", "y_mm"], float_format="%.4f")
+    assert "8134.3000" in text
+    assert "7387.4000" in text
+    assert "299999" not in text
