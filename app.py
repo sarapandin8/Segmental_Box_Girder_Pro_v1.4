@@ -5,6 +5,7 @@ import faulthandler
 import sys
 import hashlib
 import json
+import io
 from datetime import datetime, timezone
 from html import escape
 from math import sqrt, exp, acos, atan2
@@ -18,10 +19,12 @@ except Exception:
 
 import pandas as pd
 
-# pandas 3.x infers Arrow-backed string columns when PyArrow is installed.
-# This app constructs many mixed engineering tables from list[dict] records;
-# keep legacy object-backed string inference to avoid the native Arrow string
-# conversion path that crashed on Streamlit Cloud (Python 3.14 / PyArrow 25).
+# Native-crash guard for Streamlit Cloud (Python 3.14 / PyArrow 25).
+# 1) Keep pandas object-backed string inference.
+# 2) Do not use st.data_editor anywhere in this app: that widget serializes
+#    editable DataFrames through PyArrow and has produced a native segfault in
+#    pyarrow.pandas_compat.convert_column. Editable engineering tables use
+#    Arrow-free Streamlit inputs / CSV text editors instead.
 try:
     pd.options.future.infer_string = False
 except Exception:
@@ -50,6 +53,7 @@ from core.code_basis import (
     AASHTO_SECTION5_ARTICLE_MAP,
     code_basis_summary_rows,
 )
+from core.arrow_safe_editing import dataframe_to_csv_text, parse_csv_editor_text
 from core.aashto_units import (
     concrete_strength_guard_mpa,
     ksi_to_mpa,
@@ -464,6 +468,7 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 APP_DIR = Path(__file__).resolve().parent
 WIND_ASSET_DIR = APP_DIR / "assets" / "wind"
+# HARD RUNTIME INVARIANT: do not reintroduce st.data_editor; see COMMERCIAL.FEA.5E1A.
 SECTION_TEMPLATE_CSV = "loop_name,point_no,x_mm,y_mm\nStructural Polygon 1,1,0,0\nStructural Polygon 1,2,4000,0\nStructural Polygon 1,3,4000,2000\nStructural Polygon 1,4,0,2000\nOpening Polygon 1,1,1000,500\nOpening Polygon 1,2,3000,500\nOpening Polygon 1,3,3000,1500\nOpening Polygon 1,4,1000,1500\n"
 
 # -----------------------------------------------------------------------------
@@ -486,8 +491,8 @@ _PROJECT_LOAD_WIDGET_KEYS_TO_CLEAR = {
 def _bump_project_widget_epoch_and_clear_stale_editors() -> None:
     """Prevent old widget cache from overwriting newly loaded project JSON.
 
-    Data editors keep their own widget state.  After loading a saved project, an
-    old empty coordinate editor must not be allowed to write back into
+    Editable widgets keep their own state. After loading a saved project, stale
+    coordinate CSV text must not be allowed to write back into
     ``section.coordinate_rows`` on the next rerun.
     """
     st.session_state.project_widget_epoch = int(st.session_state.get("project_widget_epoch", 0)) + 1
@@ -1553,6 +1558,40 @@ EQ_LEGACY_ADOPTION_MODES = {
 }
 
 
+
+def render_arrow_free_csv_editor(
+    df: pd.DataFrame,
+    *,
+    key: str,
+    label: str,
+    columns: list[str],
+    numeric_columns: tuple[str, ...] = (),
+    integer_columns: tuple[str, ...] = (),
+    boolean_columns: tuple[str, ...] = (),
+    allowed_values: dict[str, list[str]] | None = None,
+    height: int = 260,
+) -> pd.DataFrame:
+    """Edit a compact table through CSV text without Streamlit/PyArrow serialization."""
+    if key not in st.session_state:
+        st.session_state[key] = dataframe_to_csv_text(df, columns)
+    st.caption(
+        "Arrow-safe editable table: edit the CSV rows directly. Keep the header names unchanged; "
+        "changes are validated and synchronized on each rerun."
+    )
+    text = st.text_area(label, key=key, height=height, label_visibility="collapsed")
+    try:
+        return parse_csv_editor_text(
+            text,
+            columns=columns,
+            numeric_columns=numeric_columns,
+            integer_columns=integer_columns,
+            boolean_columns=boolean_columns,
+            allowed_values=allowed_values,
+        )
+    except ValueError as exc:
+        st.error(f"Editable table not applied: {exc}")
+        return df.copy()
+
 def _normalize_eq_fea_adoption_mode(value: Any) -> str:
     """Return the current EQ FEA adoption mode with legacy wording migrated."""
     text = str(value or EQ_COEFFICIENT_TRACE_MODE)
@@ -2180,17 +2219,15 @@ def page_loads(sub: str) -> None:
         st.markdown(f'<div class="note-box"><b>SDL selection rule:</b> Active FEA SDL basis = {selected_track}. The app still keeps both single-track and double-track totals for report traceability.</div>', unsafe_allow_html=True)
 
         sdl_df = pd.DataFrame(D["load_components"]["sdl_components"])
-        edited = st.data_editor(
+        sdl_columns = ["Component", "Single Track (kN/m)", "Double Track (kN/m)", "Include", "Source", "Note"]
+        edited = render_arrow_free_csv_editor(
             sdl_df,
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            column_config={
-                "Single Track (kN/m)": st.column_config.NumberColumn(format="%.2f"),
-                "Double Track (kN/m)": st.column_config.NumberColumn(format="%.2f"),
-                "Include": st.column_config.CheckboxColumn(default=True),
-            },
-            key="sdl_component_editor",
+            key=f"sdl_component_editor_{_project_widget_epoch()}",
+            label="SDL component CSV editor",
+            columns=sdl_columns,
+            numeric_columns=("Single Track (kN/m)", "Double Track (kN/m)"),
+            boolean_columns=("Include",),
+            height=330,
         )
         D["load_components"]["sdl_components"] = edited.to_dict("records")
         ld = load_derived()
@@ -2609,17 +2646,27 @@ def page_loads(sub: str) -> None:
                 for label, key, unit, default, src, note in specs
             ])
             st.markdown("#### Editable wind parameter table")
-            edited = st.data_editor(
-                param_df,
-                use_container_width=True,
-                hide_index=True,
-                disabled=["Parameter", "Unit", "Recommendation status", "Recommended / source", "Note", "Schema key"],
-                column_config={"Value": st.column_config.NumberColumn(format="%.3f")},
-                key="wind_parameter_editor",
-            )
-            for _, row in edited.iterrows():
-                key = str(row["Schema key"])
-                lc[key] = float(row["Value"])
+            st.caption("Arrow-free input grid: only the adopted Value field is editable; recommendation and source fields remain read-only.")
+            for row_index, row in param_df.iterrows():
+                schema_key = str(row["Schema key"])
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns([1.8, 1.0, 2.2])
+                    with c1:
+                        st.markdown(f"**{escape(str(row['Parameter']))}**")
+                        st.caption(f"Unit: {row['Unit']} · {row['Recommendation status']}")
+                    with c2:
+                        adopted_value = st.number_input(
+                            f"{row['Parameter']} value",
+                            value=float(row["Value"]),
+                            step=0.001,
+                            format="%.3f",
+                            key=f"wind_parameter_editor_{schema_key}_{_project_widget_epoch()}",
+                            label_visibility="collapsed",
+                        )
+                        lc[schema_key] = float(adopted_value)
+                    with c3:
+                        st.caption(f"Source: {row['Recommended / source']}")
+                        st.caption(str(row["Note"]))
             if not bool(lc.get("wind_vb0_manual_override", False)):
                 lc["wind_vb0_m_s"] = float(lc.get("wind_v50_m_s", rec_v50)) * float(lc.get("wind_terrain_factor", rec_tf))
 
@@ -3355,39 +3402,48 @@ def render_section_properties() -> None:
     )
 
     if selected_section_property_tab == "Coordinate Input":
+        coord_editor_key = f"section_coordinate_editor_{_project_widget_epoch()}"
         c1, c2 = st.columns([1.6, 1.0])
         with c1:
             uploaded = st.file_uploader("Import CSiBridge section coordinates CSV / Excel", type=["csv", "xlsx", "xls"], key="section_coordinate_file_upload")
             if uploaded is not None:
                 try:
-                    imported = read_coordinate_table(uploaded, getattr(uploaded, "name", ""), coordinate_unit="auto")
-                    _store_section_coordinate_df(imported)
-                    st.success(f"Imported {len(imported)} coordinate rows. CSiBridge metre-based X/Y coordinates are auto-converted to mm.")
+                    upload_bytes = uploaded.getvalue()
+                    upload_token = hashlib.sha256(upload_bytes).hexdigest()
+                    if st.session_state.get("section_coordinate_last_upload_token") != upload_token:
+                        imported = read_coordinate_table(io.BytesIO(upload_bytes), getattr(uploaded, "name", ""), coordinate_unit="auto")
+                        _store_section_coordinate_df(imported)
+                        st.session_state[coord_editor_key] = dataframe_to_csv_text(imported, ["loop_name", "point_no", "x_mm", "y_mm"])
+                        st.session_state.section_coordinate_last_upload_token = upload_token
+                        st.success(f"Imported {len(imported)} coordinate rows. CSiBridge metre-based X/Y coordinates are auto-converted to mm.")
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"Could not import coordinates: {exc}")
         with c2:
             st.download_button("Download coordinate CSV template", SECTION_TEMPLATE_CSV.encode("utf-8"), "csibridge_section_coordinate_template.csv", "text/csv", use_container_width=True)
             if st.button("Load simple hollow-section example", use_container_width=True):
-                _store_section_coordinate_df(default_coordinate_template())
+                example = default_coordinate_template()
+                _store_section_coordinate_df(example)
+                st.session_state[coord_editor_key] = dataframe_to_csv_text(example, ["loop_name", "point_no", "x_mm", "y_mm"])
                 st.rerun()
         coord_df = _section_coordinate_df_from_state()
         if coord_df.empty:
-            st.info("No coordinate rows loaded yet. Upload a CSiBridge CSV/XLSX or paste rows into the editable table.")
+            st.info("No coordinate rows loaded yet. Upload a CSiBridge CSV/XLSX or paste rows into the Arrow-safe CSV editor.")
             coord_df = default_coordinate_template().iloc[0:0].copy()
         editor_df = coord_df[[c for c in ["loop_name", "point_no", "x_mm", "y_mm"] if c in coord_df.columns]].copy()
-        edited = st.data_editor(
+        edited = render_arrow_free_csv_editor(
             editor_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key=f"section_coordinate_editor_{_project_widget_epoch()}",
-            column_config={
-                "loop_name": st.column_config.SelectboxColumn("Loop", options=["Structural Polygon 1", "Opening Polygon 1"], required=True),
-                "point_no": st.column_config.NumberColumn("Point", min_value=1, step=1, required=True),
-                "x_mm": st.column_config.NumberColumn("X (mm)", step=1.0, format="%.3f", required=True),
-                "y_mm": st.column_config.NumberColumn("Y (mm)", step=1.0, format="%.3f", required=True),
-            },
+            key=coord_editor_key,
+            label="Section coordinate CSV editor",
+            columns=["loop_name", "point_no", "x_mm", "y_mm"],
+            numeric_columns=("x_mm", "y_mm"),
+            integer_columns=("point_no",),
+            allowed_values={"loop_name": ["Structural Polygon 1", "Opening Polygon 1"]},
+            height=360,
         )
-        _store_section_coordinate_df(edited)
+        try:
+            _store_section_coordinate_df(normalize_coordinate_rows(edited, coordinate_unit="mm"))
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Coordinate rows not applied: {exc}")
         st.caption("CSiBridge point order may be clockwise. The app uses loop type to add Structural Polygon area and subtract Opening Polygon area, and auto-converts CSiBridge X/Y metre exports to mm internally.")
 
     props = _section_computation_from_state()

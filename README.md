@@ -13,7 +13,16 @@ This milestone closes **COMMERCIAL.FEA.5E1 — QA Wording and Single-State Trace
 
 Schema:
 
-- `0.5.13-commercial-fea5e1-qa-wording-single-state-trace-closeout`
+- `0.5.14-commercial-fea5e1a-arrow-free-editable-inputs-hotfix`
+
+## COMMERCIAL.FEA.5E1A — Arrow-Free Editable Inputs Hotfix
+
+- Removes every `st.data_editor` call from the application. Streamlit 1.59.1 serializes that widget through PyArrow; the production Python 3.14.6 / PyArrow 25.0.0 stack crashed natively in `pyarrow.pandas_compat.convert_column`.
+- Replaces section-coordinate and SDL editable tables with validated CSV text editors that use pandas parsing only, not Arrow serialization.
+- Replaces the wind parameter data editor with native Streamlit number inputs while keeping recommendation/source fields read-only.
+- Preserves `pandas==2.3.3`, `plotly==5.24.1`, and `pd.options.future.infer_string = False`.
+- Adds a source-code invariant and regression tests preventing `st.data_editor` from being reintroduced.
+
 
 ---
 
