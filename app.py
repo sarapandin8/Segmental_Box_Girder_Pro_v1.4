@@ -10626,7 +10626,7 @@ def _render_fea_source_qa() -> None:
             card("SOURCE BLOCKED", str(blocked_count), "Blocking source defects", "fail" if blocked_count else "pass")
         st.markdown("### Recomputed integrity register")
         show_engineering_table(pd.DataFrame(visible_gates))
-        st.caption("These gates are recomputed from the Project JSON payload; stored summary counts are not accepted without reconciliation against the preserved source rows.")
+        st.caption("These gates are recomputed from the Project JSON payload; stored summary counts are not accepted without reconciliation against the preserved source rows. Gate severity describes the consequence only if a gate fails; a READY row is not currently blocking the source package.")
 
     elif selected_view == "trace":
         c1, c2, c3 = st.columns(3)

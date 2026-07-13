@@ -538,7 +538,7 @@ def stage_integrity_gates(
             status = "REVIEW"
         else:
             status = "SOURCE BLOCKED" if blocking else "REVIEW"
-        rows.append({"Stage": label, "Gate": gate, "Status": status, "Evidence": evidence, "Blocking": "YES" if blocking else "NO"})
+        rows.append({"Stage": label, "Gate": gate, "Status": status, "Evidence": evidence, "Gate severity": "BLOCKING" if blocking else "ADVISORY"})
 
     if not isinstance(stage_payload, dict) or not stage_payload.get("valid"):
         add("Validated stage payload", False, "No validated source payload is stored for this stage.")
@@ -695,7 +695,7 @@ def package_integrity_gates(
             "Gate": "Common SectCutNum/Distance/LocType map",
             "Status": "READY" if consistency.get("status") == "READY" else "REVIEW",
             "Evidence": str(consistency.get("note", "-")),
-            "Blocking": "YES",
+            "Gate severity": "BLOCKING",
         }
     )
     package = source_package_gate(imports, active_bridge_object)
@@ -705,7 +705,7 @@ def package_integrity_gates(
             "Gate": "Three-stage source package",
             "Status": "READY" if package.get("ready") else "REVIEW",
             "Evidence": f"{package.get('note', '-')} Fingerprint {str(package.get('fingerprint', '-'))[:12]}.",
-            "Blocking": "YES",
+            "Gate severity": "BLOCKING",
         }
     )
     return rows

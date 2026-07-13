@@ -1,3 +1,22 @@
+# Segmental Box Girder Pro — COMMERCIAL.FEA.5E1
+
+This milestone closes **COMMERCIAL.FEA.5E1 — QA Wording and Single-State Trace Closeout** on the accepted `COMMERCIAL.FEA.5E` source-package QA baseline.
+
+## Scope implemented
+
+- Renames the integrity-register column from ambiguous `Blocking` / `YES` wording to `Gate severity` with `BLOCKING` or `ADVISORY` values.
+- Adds an explicit note that severity describes the consequence only if a gate fails; a `READY` row is not currently blocking the source package.
+- Preserves all 36 recomputed source-integrity gates and does not change engineering calculations, imported forces, fingerprints, or downstream connection status.
+- Adds regression coverage for both simultaneous-vector trace paths: Transfer Stage and Final Service `SINGLE STATE` rows.
+- Confirms that `COMPONENT ENVELOPE` rows remain labelled `NOT A SIMULTANEOUS FORCE VECTOR` and cannot be used as synthetic P–M3 or V2–T pairs.
+- Retains `pandas==2.3.3`, `plotly==5.24.1`, and `pd.options.future.infer_string = False` to avoid the verified pandas/PyArrow native string crash on Streamlit Cloud.
+
+Schema:
+
+- `0.5.13-commercial-fea5e1-qa-wording-single-state-trace-closeout`
+
+---
+
 # Segmental Box Girder Pro — COMMERCIAL.FEA.5D1A
 
 This milestone adds **COMMERCIAL.FEA.5D1A — Legacy Project Load Single-Pass Migration and Memory-Safe Save Hotfix** on the accepted `COMMERCIAL.FEA.5D1` source-review baseline.
@@ -15,7 +34,7 @@ This milestone adds **COMMERCIAL.FEA.5D1A — Legacy Project Load Single-Pass Mi
 
 Schema:
 
-- `0.5.12-commercial-fea5e-qa-source-trace-downstream-readiness`
+- `0.5.9-commercial-fea5d1a-legacy-project-load-single-pass-hotfix`
 
 ---
 

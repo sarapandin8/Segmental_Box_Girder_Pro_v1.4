@@ -376,8 +376,10 @@ def _qa_three_stage_payloads() -> dict[str, dict]:
     service_rows = [
         ["B2_SPAN1", 1, 0.0, "After", "S1", "Combination", "Max", -20, 12, 1, 60],
         ["B2_SPAN1", 1, 0.0, "After", "S1", "Combination", "Min", -50, -14, -2, -70],
+        ["B2_SPAN1", 1, 0.0, "After", "S2", "Combination", "", -15, 9, 0.5, 55],
         ["B2_SPAN1", 2, 1.0, "Before", "S1", "Combination", "Max", -22, 15, 2, 65],
         ["B2_SPAN1", 2, 1.0, "Before", "S1", "Combination", "Min", -55, -16, -3, -75],
+        ["B2_SPAN1", 2, 1.0, "Before", "S2", "Combination", "", -18, 10, 1.0, 58],
     ]
     return {
         "uls": read_csibridge_force_workbook(_workbook_bytes(uls_rows), filename="uls.xlsx", stage="uls"),
@@ -421,6 +423,25 @@ def test_fea5e_governing_trace_links_envelope_to_original_row_and_semantics():
     assert transfer_trace["SourceState"] == SOURCE_STATE_SINGLE
     assert transfer_trace["companion_vector_status"] == "SIMULTANEOUS SOURCE VECTOR"
     assert transfer_trace["envelope_source_matches"] is True
+
+    service_trace = trace_component_extremum(imports["service"], "P", "maximum")
+    assert service_trace["value"] == -15.0
+    assert service_trace["OutputCase"] == "S2"
+    assert service_trace["StepType"] == ""
+    assert service_trace["SourceState"] == SOURCE_STATE_SINGLE
+    assert service_trace["companion_vector_status"] == "SIMULTANEOUS SOURCE VECTOR"
+    assert service_trace["companion_values"]["M3"] == 55.0
+    assert service_trace["envelope_source_matches"] is True
+
+
+
+def test_fea5e1_integrity_gate_severity_is_not_current_blocking_status():
+    gates = package_integrity_gates(_qa_three_stage_payloads(), "B2_SPAN1", span_m=1.0)
+    assert gates
+    assert all("Gate severity" in row for row in gates)
+    assert all("Blocking" not in row for row in gates)
+    assert {row["Gate severity"] for row in gates} == {"BLOCKING"}
+    assert all(row["Status"] == "READY" for row in gates)
 
 
 def test_fea5e_trace_rejects_unknown_component_and_selection():
