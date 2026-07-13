@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 from io import BytesIO
+from math import isfinite
 from typing import Any, BinaryIO, Iterable
 
 import pandas as pd
@@ -512,3 +513,276 @@ def global_component_extrema(records: Iterable[dict[str, Any]]) -> list[dict[str
             }
         )
     return rows
+
+
+
+def stage_integrity_gates(
+    stage_payload: Any,
+    active_bridge_object: str,
+    *,
+    span_m: float | None = None,
+) -> list[dict[str, Any]]:
+    """Re-audit a persisted FEA stage payload without trusting saved summaries.
+
+    Import-time validation remains the first gate.  This function is deliberately
+    independent of the Excel reader so a saved/migrated Project JSON can be checked
+    again before any downstream design connection is considered.
+    """
+    label = STAGE_LABELS.get(str(stage_payload.get("stage", "")) if isinstance(stage_payload, dict) else "", "Unknown stage")
+    rows: list[dict[str, Any]] = []
+
+    def add(gate: str, ready: bool, evidence: str, *, blocking: bool = True, review: bool = False) -> None:
+        if ready:
+            status = "READY"
+        elif review:
+            status = "REVIEW"
+        else:
+            status = "SOURCE BLOCKED" if blocking else "REVIEW"
+        rows.append({"Stage": label, "Gate": gate, "Status": status, "Evidence": evidence, "Blocking": "YES" if blocking else "NO"})
+
+    if not isinstance(stage_payload, dict) or not stage_payload.get("valid"):
+        add("Validated stage payload", False, "No validated source payload is stored for this stage.")
+        return rows
+
+    stage = str(stage_payload.get("stage", ""))
+    label = STAGE_LABELS.get(stage, stage or "Unknown stage")
+    records = stage_payload.get("records", [])
+    records = records if isinstance(records, list) else []
+    envelopes = stage_payload.get("envelopes", [])
+    envelopes = envelopes if isinstance(envelopes, list) else []
+    summary = stage_payload.get("summary", {}) if isinstance(stage_payload.get("summary"), dict) else {}
+    semantics = stage_payload.get("source_semantics", {}) if isinstance(stage_payload.get("source_semantics"), dict) else {}
+
+    status = stage_source_status(stage_payload, active_bridge_object)
+    add("Active span / stage contract", status["status"] == "READY", status["note"])
+
+    declared_rows = int(summary.get("rows", 0) or 0)
+    declared_cuts = int(summary.get("sect_cuts", 0) or 0)
+    cut_ids = {int(row.get("SectCutNum", 0) or 0) for row in records if isinstance(row, dict)}
+    cut_ids.discard(0)
+    add(
+        "Inventory reconciliation",
+        declared_rows == len(records) and declared_cuts == len(cut_ids) and len(envelopes) == len(cut_ids),
+        f"Stored/actual rows {declared_rows}/{len(records)}; cuts {declared_cuts}/{len(cut_ids)}; compact envelopes {len(envelopes)}.",
+    )
+
+    required_numeric = ("SectCutNum", "Distance", *FORCE_COMPONENTS)
+    bad_numeric = 0
+    for row in records:
+        if not isinstance(row, dict):
+            bad_numeric += 1
+            continue
+        for name in required_numeric:
+            try:
+                value = float(row.get(name))
+                if not isfinite(value):
+                    bad_numeric += 1
+            except (TypeError, ValueError):
+                bad_numeric += 1
+    add("Finite numeric values", bad_numeric == 0, f"{bad_numeric} invalid/non-finite required numeric values across {len(records)} source rows.")
+
+    identities: list[tuple[Any, ...]] = []
+    for row in records:
+        if isinstance(row, dict):
+            identities.append(
+                (
+                    str(row.get("BridgeObj", "")),
+                    int(row.get("SectCutNum", 0) or 0),
+                    round(float(row.get("Distance", 0.0) or 0.0), 9),
+                    str(row.get("LocType", "")),
+                    str(row.get("OutputCase", "")),
+                    str(row.get("StepType", "")),
+                )
+            )
+    duplicate_count = len(identities) - len(set(identities))
+    add("Unique source-row identity", duplicate_count == 0, f"{duplicate_count} duplicate BridgeObj/cut/station/case/step identities.")
+
+    cut_locations: dict[int, set[tuple[float, str]]] = {}
+    invalid_loc = 0
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        cut = int(row.get("SectCutNum", 0) or 0)
+        loc = str(row.get("LocType", ""))
+        invalid_loc += int(loc not in {"Before", "After"})
+        cut_locations.setdefault(cut, set()).add((round(float(row.get("Distance", 0.0) or 0.0), 9), loc))
+    multi_location = sum(1 for locations in cut_locations.values() if len(locations) != 1)
+    add("Section-cut identity", multi_location == 0 and invalid_loc == 0, f"{multi_location} cut IDs map to multiple stations; {invalid_loc} unsupported LocType values.")
+
+    all_cuts = set(cut_locations)
+    source_cut_map: dict[tuple[str, str], set[int]] = {}
+    for row in records:
+        if isinstance(row, dict):
+            source_cut_map.setdefault((str(row.get("OutputCase", "")), str(row.get("StepType", ""))), set()).add(int(row.get("SectCutNum", 0) or 0))
+    incomplete = [f"{case}/{step or 'Single'}" for (case, step), cuts in source_cut_map.items() if cuts != all_cuts]
+    add("Complete case/step station coverage", not incomplete, "All source cases cover the complete cut map." if not incomplete else "Incomplete: " + ", ".join(incomplete[:8]) + ".")
+
+    distances = [float(row.get("Distance", 0.0) or 0.0) for row in records if isinstance(row, dict)]
+    if distances:
+        dmin, dmax = min(distances), max(distances)
+        tol = max(1e-6, (float(span_m) if span_m is not None else max(abs(dmax), 1.0)) * 1e-6)
+        within = dmin >= -tol and (span_m is None or dmax <= float(span_m) + tol)
+        bound_note = f"x = {dmin:.4f}–{dmax:.4f} m" + (f" within active span 0–{float(span_m):.4f} m." if span_m is not None else ".")
+        add("Station bounds", within, bound_note)
+    else:
+        add("Station bounds", False, "No source stations are stored.")
+
+    units = stage_payload.get("units", {}) if isinstance(stage_payload.get("units"), dict) else {}
+    unit_issues = [f"{name}={units.get(name, '-')}" for name, expected in EXPECTED_UNITS.items() if str(units.get(name, "")).upper() != expected.upper()]
+    add("Engineering units", not unit_issues, "Distance=m; P/V2=kN; T/M3=kN·m." if not unit_issues else "Unsupported: " + ", ".join(unit_issues) + ".")
+
+    computed_single = sum(1 for row in records if isinstance(row, dict) and str(row.get("SourceState", "")) == SOURCE_STATE_SINGLE)
+    computed_env = sum(1 for row in records if isinstance(row, dict) and str(row.get("SourceState", "")) == SOURCE_STATE_COMPONENT_ENVELOPE)
+    semantic_match = computed_single == int(semantics.get("single_state_rows", -1)) and computed_env == int(semantics.get("component_envelope_rows", -1))
+    add("Source-semantics counts", semantic_match, f"SINGLE STATE {computed_single}; COMPONENT ENVELOPE {computed_env}; declared overall {semantics.get('overall', '-')}.")
+
+    envelope_trace_issues = 0
+    source_rows = {int(row.get("SourceRow", -1)) for row in records if isinstance(row, dict)}
+    rows_by_cut: dict[int, int] = {}
+    for row in records:
+        if isinstance(row, dict):
+            cut = int(row.get("SectCutNum", 0) or 0)
+            rows_by_cut[cut] = rows_by_cut.get(cut, 0) + 1
+    for envelope in envelopes:
+        if not isinstance(envelope, dict):
+            envelope_trace_issues += 1
+            continue
+        cut = int(envelope.get("SectCutNum", 0) or 0)
+        if int(envelope.get("CandidateRows", -1)) != rows_by_cut.get(cut, 0):
+            envelope_trace_issues += 1
+        for component in FORCE_COMPONENTS:
+            for bound in ("min", "max"):
+                source = envelope.get(f"{component}_{bound}_source", {})
+                if not isinstance(source, dict) or int(source.get("SourceRow", -1)) not in source_rows:
+                    envelope_trace_issues += 1
+    add("Compact-envelope source trace", envelope_trace_issues == 0, f"{envelope_trace_issues} missing/inconsistent compact-envelope source references.")
+
+    sha = str(stage_payload.get("sha256", ""))
+    sha_ready = len(sha) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in sha)
+    add("Source fingerprint", sha_ready, f"SHA-256 {stage_payload.get('sha256_12', '-')}; filename {stage_payload.get('filename', '-')}.")
+
+    if stage == "transfer":
+        output_cases = {str(row.get("OutputCase", "")) for row in records if isinstance(row, dict)}
+        rows_per_cut = list(rows_by_cut.values())
+        transfer_ready = (
+            len(output_cases) == 1
+            and bool(rows_per_cut)
+            and min(rows_per_cut) == max(rows_per_cut) == 1
+            and computed_env == 0
+            and computed_single == len(records)
+            and all(not str(row.get("StepType", "")) for row in records if isinstance(row, dict))
+        )
+        add("Transfer simultaneous-vector contract", transfer_ready, f"OutputCases {len(output_cases)}; rows/cut {min(rows_per_cut) if rows_per_cut else 0}–{max(rows_per_cut) if rows_per_cut else 0}; SINGLE STATE {computed_single}/{len(records)}.")
+
+    return rows
+
+
+def package_integrity_gates(
+    stage_imports: Any,
+    active_bridge_object: str,
+    *,
+    span_m: float | None = None,
+) -> list[dict[str, Any]]:
+    """Return stage and cross-stage QA gates for the complete FEA source package."""
+    imports = stage_imports if isinstance(stage_imports, dict) else {}
+    rows: list[dict[str, Any]] = []
+    for stage in ("uls", "transfer", "service"):
+        rows.extend(stage_integrity_gates(imports.get(stage), active_bridge_object, span_m=span_m))
+    consistency = cross_stage_station_consistency(imports)
+    rows.append(
+        {
+            "Stage": "Cross-stage package",
+            "Gate": "Common SectCutNum/Distance/LocType map",
+            "Status": "READY" if consistency.get("status") == "READY" else "REVIEW",
+            "Evidence": str(consistency.get("note", "-")),
+            "Blocking": "YES",
+        }
+    )
+    package = source_package_gate(imports, active_bridge_object)
+    rows.append(
+        {
+            "Stage": "Cross-stage package",
+            "Gate": "Three-stage source package",
+            "Status": "READY" if package.get("ready") else "REVIEW",
+            "Evidence": f"{package.get('note', '-')} Fingerprint {str(package.get('fingerprint', '-'))[:12]}.",
+            "Blocking": "YES",
+        }
+    )
+    return rows
+
+
+def trace_component_extremum(
+    stage_payload: Any,
+    component: str,
+    selection: str = "absolute",
+) -> dict[str, Any]:
+    """Trace one component extremum back to its original imported source row.
+
+    ``selection`` is ``absolute``, ``minimum``, or ``maximum``.  Companion
+    component values are returned exactly as stored, but are simultaneous only
+    when ``SourceState`` is ``SINGLE STATE``.
+    """
+    if component not in FORCE_COMPONENTS:
+        raise ValueError(f"Unsupported force component: {component}.")
+    if selection not in {"absolute", "minimum", "maximum"}:
+        raise ValueError(f"Unsupported extremum selection: {selection}.")
+    if not isinstance(stage_payload, dict) or not stage_payload.get("valid"):
+        raise ValueError("A validated stage payload is required for source tracing.")
+    records = [row for row in stage_payload.get("records", []) if isinstance(row, dict)]
+    if not records:
+        raise ValueError("The selected stage contains no source rows.")
+
+    def value(row: dict[str, Any]) -> float:
+        return float(row.get(component, 0.0) or 0.0)
+
+    if selection == "minimum":
+        source_row = min(records, key=value)
+        bound = "min"
+    elif selection == "maximum":
+        source_row = max(records, key=value)
+        bound = "max"
+    else:
+        source_row = max(records, key=lambda row: abs(value(row)))
+        bound = "min" if value(source_row) < 0.0 else "max"
+
+    cut = int(source_row.get("SectCutNum", 0) or 0)
+    distance = float(source_row.get("Distance", 0.0) or 0.0)
+    loc_type = str(source_row.get("LocType", ""))
+    envelope_row = next(
+        (
+            row
+            for row in stage_payload.get("envelopes", [])
+            if isinstance(row, dict)
+            and int(row.get("SectCutNum", 0) or 0) == cut
+            and abs(float(row.get("Distance", 0.0) or 0.0) - distance) <= 1e-9
+            and str(row.get("LocType", "")) == loc_type
+        ),
+        {},
+    )
+    envelope_source = envelope_row.get(f"{component}_{bound}_source", {}) if isinstance(envelope_row, dict) else {}
+    source_state = str(source_row.get("SourceState", ""))
+    return {
+        "stage": str(stage_payload.get("stage", "")),
+        "stage_label": str(stage_payload.get("stage_label") or STAGE_LABELS.get(str(stage_payload.get("stage", "")), "-")),
+        "component": component,
+        "selection": selection,
+        "bound": bound,
+        "value": value(source_row),
+        "absolute": abs(value(source_row)),
+        "SectCutNum": cut,
+        "Distance": distance,
+        "LocType": loc_type,
+        "OutputCase": str(source_row.get("OutputCase", "")),
+        "StepType": str(source_row.get("StepType", "")),
+        "SourceState": source_state,
+        "SourceRow": int(source_row.get("SourceRow", 0) or 0),
+        "companion_values": {name: float(source_row.get(name, 0.0) or 0.0) for name in FORCE_COMPONENTS},
+        "companion_vector_status": "SIMULTANEOUS SOURCE VECTOR" if source_state == SOURCE_STATE_SINGLE else "NOT A SIMULTANEOUS FORCE VECTOR",
+        "envelope_candidate_rows": int(envelope_row.get("CandidateRows", 0) or 0) if isinstance(envelope_row, dict) else 0,
+        "envelope_source_matches": bool(
+            isinstance(envelope_source, dict)
+            and int(envelope_source.get("SourceRow", -1)) == int(source_row.get("SourceRow", 0) or 0)
+        ),
+        "filename": str(stage_payload.get("filename", "-")),
+        "sha256_12": str(stage_payload.get("sha256_12", "-")),
+    }

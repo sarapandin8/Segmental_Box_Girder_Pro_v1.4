@@ -6,13 +6,13 @@ calculation-engine inputs from M1. Internal UI units are kN, m, MPa, and mm.
 
 BG40_DEFAULT = {
     "meta": {
-        "schema_version": "0.5.11-commercial-fea5d1c-pandas-arrow-string-crash-hotfix",
-        "source_file_schema_version": "0.5.11-commercial-fea5d1c-pandas-arrow-string-crash-hotfix",
-        "loaded_schema_version": "0.5.11-commercial-fea5d1c-pandas-arrow-string-crash-hotfix",
+        "schema_version": "0.5.12-commercial-fea5e-qa-source-trace-downstream-readiness",
+        "source_file_schema_version": "0.5.12-commercial-fea5e-qa-source-trace-downstream-readiness",
+        "loaded_schema_version": "0.5.12-commercial-fea5e-qa-source-trace-downstream-readiness",
         "schema_migration_status": "Current",
-        "migration_target_schema_version": "0.5.11-commercial-fea5d1c-pandas-arrow-string-crash-hotfix",
+        "migration_target_schema_version": "0.5.12-commercial-fea5e-qa-source-trace-downstream-readiness",
         "migration_complete": True,
-        "migration_path": ["0.5.11-commercial-fea5d1c-pandas-arrow-string-crash-hotfix"],
+        "migration_path": ["0.5.12-commercial-fea5e-qa-source-trace-downstream-readiness"],
         "app_name": "Segmental Box Girder Pro",
         "dataset_status": "BG40 baseline loaded; AASHTO LRFD 2020 Section 5 governing concrete design basis and DPT seismic database active",
         "schema_note": "Report-driven workspace/subpage schema for commercial-grade QA, traceability, and future report export.",
@@ -292,7 +292,7 @@ BG40_DEFAULT = {
         "source_note": "Import CSiBridge tendon General / Vertical / Horizontal tables to generate layout figures, then explicitly adopt the tendon model before downstream use.",
     },
     "fea_results": {
-        "source_status": "FEA.5D three-stage CSiBridge review with ULS, Transfer, and Final Service SLS force-review workspaces; downstream design remains disconnected.",
+        "source_status": "FEA.5E three-stage CSiBridge source QA, governing trace, and downstream-readiness closeout; downstream design remains disconnected.",
         "axis_convention": {
             "status": "CONFIRMED FOR ACTIVE APP AXES",
             "source_program": "CSiBridge",

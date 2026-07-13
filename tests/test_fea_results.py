@@ -10,9 +10,11 @@ from core.fea_results import (
     SOURCE_STATE_COMPONENT_ENVELOPE,
     SOURCE_STATE_SINGLE,
     cross_stage_station_consistency,
+    package_integrity_gates,
     read_csibridge_force_workbook,
     source_package_gate,
     stage_source_status,
+    trace_component_extremum,
 )
 from visualization.fea_figures import (
     FORCE_COMPONENT_META,
@@ -353,3 +355,77 @@ def test_fea5d_final_service_mixed_source_scalar_review_and_chart():
 def test_fea5d_final_service_figure_rejects_unknown_component():
     with pytest.raises(ValueError, match="Unsupported FEA force component"):
         service_component_envelope_figure({"envelopes": []}, "V3")
+
+
+
+def _qa_three_stage_payloads() -> dict[str, dict]:
+    uls_rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "U1", "Combination", "Max", -10, 30, -5, 100],
+        ["B2_SPAN1", 1, 0.0, "After", "U1", "Combination", "Min", -40, -20, 8, 50],
+        ["B2_SPAN1", 1, 0.0, "After", "U2", "Combination", "Max", -5, 10, 2, 120],
+        ["B2_SPAN1", 1, 0.0, "After", "U2", "Combination", "Min", -25, -35, -9, 40],
+        ["B2_SPAN1", 2, 1.0, "Before", "U1", "Combination", "Max", -12, 22, 3, 90],
+        ["B2_SPAN1", 2, 1.0, "Before", "U1", "Combination", "Min", -30, -18, -4, 45],
+        ["B2_SPAN1", 2, 1.0, "Before", "U2", "Combination", "Max", -9, 19, 2, 95],
+        ["B2_SPAN1", 2, 1.0, "Before", "U2", "Combination", "Min", -28, -24, -6, 42],
+    ]
+    transfer_rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "Transfer stage", "Combination", -100, -20, 2, -50],
+        ["B2_SPAN1", 2, 1.0, "Before", "Transfer stage", "Combination", -110, 18, -1, -40],
+    ]
+    service_rows = [
+        ["B2_SPAN1", 1, 0.0, "After", "S1", "Combination", "Max", -20, 12, 1, 60],
+        ["B2_SPAN1", 1, 0.0, "After", "S1", "Combination", "Min", -50, -14, -2, -70],
+        ["B2_SPAN1", 2, 1.0, "Before", "S1", "Combination", "Max", -22, 15, 2, 65],
+        ["B2_SPAN1", 2, 1.0, "Before", "S1", "Combination", "Min", -55, -16, -3, -75],
+    ]
+    return {
+        "uls": read_csibridge_force_workbook(_workbook_bytes(uls_rows), filename="uls.xlsx", stage="uls"),
+        "transfer": read_csibridge_force_workbook(_workbook_bytes(transfer_rows, include_step=False), filename="transfer.xlsx", stage="transfer"),
+        "service": read_csibridge_force_workbook(_workbook_bytes(service_rows), filename="service.xlsx", stage="service"),
+    }
+
+
+def test_fea5e_package_integrity_recomputes_all_stage_and_cross_stage_gates():
+    imports = _qa_three_stage_payloads()
+    gates = package_integrity_gates(imports, "B2_SPAN1", span_m=1.0)
+    assert gates
+    assert all(row["Status"] == "READY" for row in gates)
+    assert any(row["Gate"] == "Transfer simultaneous-vector contract" for row in gates)
+    assert any(row["Gate"] == "Compact-envelope source trace" for row in gates)
+    assert any(row["Stage"] == "Cross-stage package" and row["Gate"] == "Three-stage source package" for row in gates)
+
+
+def test_fea5e_integrity_detects_persisted_payload_tampering():
+    imports = _qa_three_stage_payloads()
+    imports["uls"]["records"].append(dict(imports["uls"]["records"][0]))
+    gates = package_integrity_gates(imports, "B2_SPAN1", span_m=1.0)
+    by_gate = {(row["Stage"], row["Gate"]): row for row in gates}
+    assert by_gate[("ULS", "Inventory reconciliation")]["Status"] == "SOURCE BLOCKED"
+    assert by_gate[("ULS", "Unique source-row identity")]["Status"] == "SOURCE BLOCKED"
+
+
+def test_fea5e_governing_trace_links_envelope_to_original_row_and_semantics():
+    imports = _qa_three_stage_payloads()
+    trace = trace_component_extremum(imports["uls"], "M3", "absolute")
+    assert trace["value"] == 120.0
+    assert trace["OutputCase"] == "U2"
+    assert trace["StepType"] == "Max"
+    assert trace["SourceState"] == SOURCE_STATE_COMPONENT_ENVELOPE
+    assert trace["envelope_source_matches"] is True
+    assert trace["companion_vector_status"] == "NOT A SIMULTANEOUS FORCE VECTOR"
+    assert trace["companion_values"]["P"] == -5.0
+
+    transfer_trace = trace_component_extremum(imports["transfer"], "P", "absolute")
+    assert transfer_trace["value"] == -110.0
+    assert transfer_trace["SourceState"] == SOURCE_STATE_SINGLE
+    assert transfer_trace["companion_vector_status"] == "SIMULTANEOUS SOURCE VECTOR"
+    assert transfer_trace["envelope_source_matches"] is True
+
+
+def test_fea5e_trace_rejects_unknown_component_and_selection():
+    payload = _qa_three_stage_payloads()["uls"]
+    with pytest.raises(ValueError, match="Unsupported force component"):
+        trace_component_extremum(payload, "V3", "absolute")
+    with pytest.raises(ValueError, match="Unsupported extremum selection"):
+        trace_component_extremum(payload, "P", "median")

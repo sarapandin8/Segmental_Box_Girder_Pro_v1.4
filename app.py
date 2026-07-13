@@ -100,9 +100,11 @@ from core.fea_results import (
     FEAResultImportError,
     cross_stage_station_consistency,
     global_component_extrema,
+    package_integrity_gates,
     read_csibridge_force_workbook,
     source_package_gate,
     stage_source_status,
+    trace_component_extremum,
 )
 from core.project_io import ProjectJsonLoadError, load_project_json_bytes, project_json_fingerprint, project_load_summary, section_persistence_summary, serialize_project_json_bytes
 from core.section_geometry import calculate_section_properties, classify_point_in_section_void, default_coordinate_template, estimate_thin_walled_closed_box_j, normalize_coordinate_rows, read_coordinate_table
@@ -10496,60 +10498,239 @@ def _render_fea_import_hub() -> None:
 
 
 def _render_fea_source_qa() -> None:
+    """Render 5.5 as the read-only source QA and downstream-readiness closeout."""
     imports = _fea_stage_imports()
+    active_span = str(D.get("project", {}).get("bridge_object", ""))
+    span_m = float(D.get("project", {}).get("span_m", 0.0) or 0.0)
     available = [stage for stage in ("uls", "transfer", "service") if imports.get(stage, {}).get("valid")]
     if not available:
         st.info("No FEA source is imported. Use 5.1 Import / Data Hub first.")
         return
-    consistency = cross_stage_station_consistency(imports)
-    st.markdown(
-        f'<div class="note-box"><b>Cross-stage station consistency:</b> {escape(consistency["status"])} — {escape(consistency["note"])}</div>',
-        unsafe_allow_html=True,
-    )
-    if consistency.get("details"):
-        show_engineering_table(pd.DataFrame(consistency["details"]))
 
-    active_span = str(D.get("project", {}).get("bridge_object", ""))
-    trace_rows: list[list[Any]] = []
-    for stage in available:
-        payload = imports[stage]
-        summary = payload.get("summary", {})
-        program = payload.get("program_control", {})
-        semantics = payload.get("source_semantics", {})
-        status = stage_source_status(payload, active_span)
-        trace_rows.append(
-            [
-                STAGE_LABELS[stage],
-                payload.get("filename", "-"),
-                payload.get("sha256_12", "-"),
-                program.get("ProgramName", "-"),
-                program.get("Version", "-"),
-                program.get("CurrUnits", "-"),
-                program.get("BridgeCode", "-"),
-                program.get("ConcCode", "-"),
-                int(summary.get("rows", 0)),
-                int(summary.get("sect_cuts", 0)),
-                _fea_semantics_case_display(payload),
-                status["status"],
-            ]
-        )
-    show_engineering_table(
-        pd.DataFrame(
-            trace_rows,
-            columns=["Stage", "Filename", "SHA-256 (12)", "Program", "Version", "Program units", "Bridge code", "Concrete code", "Raw rows", "Section cuts", "Source semantics", "Status"],
-        )
-    )
+    package = source_package_gate(imports, active_span)
+    gates = package_integrity_gates(imports, active_span, span_m=span_m)
+    non_ready = [row for row in gates if row.get("Status") != "READY"]
+    qa_ready = package.get("ready") and not non_ready
+    downstream = D.setdefault("fea_results", {}).setdefault("downstream_connection", {})
+    downstream_status = str(downstream.get("status", "NOT YET CONNECTED"))
+
     st.markdown(
-        '<div class="warn-box"><b>Source limitation:</b> COMPONENT ENVELOPE rows may be non-simultaneous. '
-        'SINGLE STATE rows preserve one force vector. No license number, operating-system flag, or machine-specific '
-        'program metadata is persisted in the Project JSON.</div>',
+        '<div class="note-box"><b>5.5 QA / Source Trace:</b> this is a read-only source-package closeout. '
+        'It re-audits the persisted ULS, Transfer, and Final Service SLS payloads, traces governing component values '
+        'back to their original imported rows, and reports downstream readiness. <b>SOURCE READY is not a design PASS.</b></div>',
         unsafe_allow_html=True,
     )
-    selected = st.selectbox("Stage source trace", available, format_func=lambda value: STAGE_LABELS[value], key="fea_qa_stage")
-    payload = imports[selected]
-    show_engineering_table(pd.DataFrame(payload.get("case_summary", [])))
-    if _trace_toggle(f"{STAGE_LABELS[selected]} detailed raw source table", default=False):
-        st.dataframe(pd.DataFrame(payload.get("records", [])), width="stretch", hide_index=True, height=640)
+
+    view_labels = {
+        "summary": "Summary",
+        "integrity": "Integrity Gates",
+        "trace": "Governing Trace",
+        "downstream": "Downstream Readiness",
+    }
+    if st.session_state.get("fea_qa_review_subpage") not in view_labels:
+        st.session_state.fea_qa_review_subpage = "summary"
+    selected_view = st.radio(
+        "FEA QA review subpage",
+        list(view_labels),
+        format_func=lambda key: view_labels[key],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="fea_qa_review_subpage",
+    )
+    st.caption(f"Active review: 5.5 {view_labels[selected_view]} · source QA only; Sections 6–9 are not recalculated here.")
+
+    if selected_view == "summary":
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1:
+            card("SOURCE PACKAGE QA", "READY" if qa_ready else "REVIEW", f"{len(gates) - len(non_ready)}/{len(gates)} QA gates ready", "pass" if qa_ready else "warn")
+        with c2:
+            card("VALIDATED STAGES", f"{len(available)}/3", "ULS + Transfer + Final Service SLS", "pass" if len(available) == 3 else "warn")
+        with c3:
+            consistency = package.get("station_consistency", {})
+            card("STATION MAP", str(consistency.get("status", "PENDING")), str(consistency.get("note", "-")), str(consistency.get("mode", "warn")))
+        with c4:
+            card("PACKAGE TRACE", str(package.get("fingerprint", "-"))[:12], "Combined three-stage SHA-256", "pass" if package.get("ready") else "warn")
+        with c5:
+            card("DESIGN CONNECTION", downstream_status, "Source review only; no downstream adoption", "pass" if downstream_status == "CONNECTED" else "warn")
+
+        inventory_rows: list[list[Any]] = []
+        for stage in ("uls", "transfer", "service"):
+            payload = imports.get(stage, {})
+            summary = payload.get("summary", {}) if isinstance(payload, dict) else {}
+            semantics = payload.get("source_semantics", {}) if isinstance(payload, dict) else {}
+            status = stage_source_status(payload, active_span)
+            if semantics.get("overall") == SOURCE_STATE_SINGLE:
+                design_use = "SIMULTANEOUS SOURCE VECTORS AVAILABLE"
+            elif int(semantics.get("single_state_rows", 0) or 0) > 0:
+                design_use = "MIXED — SCALAR BOUNDS + VERIFIED SINGLE STATES"
+            else:
+                design_use = "SCALAR BOUNDS ONLY"
+            inventory_rows.append(
+                [
+                    STAGE_LABELS[stage],
+                    payload.get("filename", "-"),
+                    payload.get("sha256_12", "-"),
+                    int(summary.get("rows", 0) or 0),
+                    int(summary.get("sect_cuts", 0) or 0),
+                    int(summary.get("output_cases", 0) or 0),
+                    f"{int(summary.get('rows_per_cut_min', 0) or 0)}–{int(summary.get('rows_per_cut_max', 0) or 0)}",
+                    str(semantics.get("overall", "-")),
+                    design_use,
+                    status.get("status", "PENDING"),
+                ]
+            )
+        st.markdown("### Source package inventory")
+        show_engineering_table(
+            pd.DataFrame(
+                inventory_rows,
+                columns=["Stage", "Filename", "SHA-256 (12)", "Raw rows", "Section cuts", "Output cases", "Rows/cut", "Source semantics", "Permitted review use", "Source status"],
+            )
+        )
+        st.markdown(
+            '<div class="warn-box"><b>Semantic guard:</b> COMPONENT ENVELOPE values are independent scalar extrema. '
+            'Only an original row labelled SINGLE STATE is eligible to represent one simultaneous P–V2–T–M3 source vector. '
+            'The source package being READY does not connect or certify Sections 6–9.</div>',
+            unsafe_allow_html=True,
+        )
+        if non_ready:
+            st.markdown("### Open QA items")
+            show_engineering_table(pd.DataFrame(non_ready))
+
+    elif selected_view == "integrity":
+        filter_labels = {"all": "All stages", "uls": "ULS", "transfer": "Transfer Stage", "service": "Final Service SLS", "cross": "Cross-stage package"}
+        selected_filter = st.radio(
+            "Integrity stage filter",
+            list(filter_labels),
+            format_func=lambda key: filter_labels[key],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="fea_qa_integrity_stage_filter",
+        )
+        if selected_filter == "all":
+            visible_gates = gates
+        elif selected_filter == "cross":
+            visible_gates = [row for row in gates if row.get("Stage") == "Cross-stage package"]
+        else:
+            visible_gates = [row for row in gates if row.get("Stage") == STAGE_LABELS[selected_filter]]
+        ready_count = sum(row.get("Status") == "READY" for row in visible_gates)
+        blocked_count = sum(row.get("Status") == "SOURCE BLOCKED" for row in visible_gates)
+        review_count = sum(row.get("Status") == "REVIEW" for row in visible_gates)
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            card("VISIBLE QA GATES", str(len(visible_gates)), filter_labels[selected_filter], "pass" if visible_gates else "warn")
+        with c2:
+            card("READY", str(ready_count), "Source integrity gates closed", "pass" if ready_count == len(visible_gates) else "warn")
+        with c3:
+            card("REVIEW", str(review_count), "Engineering/source review items", "warn" if review_count else "pass")
+        with c4:
+            card("SOURCE BLOCKED", str(blocked_count), "Blocking source defects", "fail" if blocked_count else "pass")
+        st.markdown("### Recomputed integrity register")
+        show_engineering_table(pd.DataFrame(visible_gates))
+        st.caption("These gates are recomputed from the Project JSON payload; stored summary counts are not accepted without reconciliation against the preserved source rows.")
+
+    elif selected_view == "trace":
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            selected_stage = st.selectbox("Stage", available, format_func=lambda value: STAGE_LABELS[value], key="fea_qa_trace_stage")
+        with c2:
+            selected_component = st.selectbox("Force component", list(FORCE_COMPONENTS), format_func=lambda value: FORCE_COMPONENT_META[value]["title"], key="fea_qa_trace_component")
+        selection_labels = {"absolute": "Maximum absolute", "minimum": "Minimum", "maximum": "Maximum"}
+        with c3:
+            selected_extremum = st.selectbox("Extremum", list(selection_labels), format_func=lambda value: selection_labels[value], key="fea_qa_trace_extremum")
+        payload = imports[selected_stage]
+        trace = trace_component_extremum(payload, selected_component, selected_extremum)
+        meta = FORCE_COMPONENT_META[selected_component]
+        trace_ready = bool(trace.get("envelope_source_matches"))
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            card("TRACE STATUS", "READY" if trace_ready else "REVIEW", "Compact envelope → original source row", "pass" if trace_ready else "warn")
+        with c2:
+            card(f"{selection_labels[selected_extremum].upper()} {selected_component}", f"{trace['value']:,.3f} {meta['unit']}", f"Absolute {trace['absolute']:,.3f} {meta['unit']}", "pass")
+        with c3:
+            card("SOURCE LOCATION", f"Cut {trace['SectCutNum']} · x={trace['Distance']:.4f} m", str(trace["LocType"]), "pass")
+        with c4:
+            step = trace.get("StepType") or "Single"
+            card("ORIGINAL SOURCE", f"{trace['OutputCase']} / {step}", f"{trace['SourceState']} · row {trace['SourceRow']}", "pass" if trace["SourceState"] == SOURCE_STATE_SINGLE else "warn")
+
+        trace_chain = pd.DataFrame(
+            [
+                [1, "Stage review", f"{trace['stage_label']} · {selection_labels[selected_extremum]} {meta['title']}", "READY"],
+                [2, "Compact scalar envelope", f"Cut {trace['SectCutNum']} · x={trace['Distance']:.4f} m · {trace['LocType']} · {trace['envelope_candidate_rows']} candidate rows", "MATCH" if trace_ready else "REVIEW"],
+                [3, "Source case/state", f"{trace['OutputCase']} / {trace.get('StepType') or 'Single'} · {trace['SourceState']}", "SINGLE VECTOR" if trace['SourceState'] == SOURCE_STATE_SINGLE else "SCALAR ENVELOPE"],
+                [4, "Original imported record", f"Source row {trace['SourceRow']}", "TRACE READY"],
+                [5, "Workbook fingerprint", f"{trace['filename']} · SHA-256 {trace['sha256_12']}", "TRACE READY"],
+            ],
+            columns=["Step", "Trace level", "Evidence", "Status"],
+        )
+        st.markdown("### Governing source-trace chain")
+        show_engineering_table(trace_chain)
+
+        companion = trace.get("companion_values", {})
+        companion_rows = []
+        for component in FORCE_COMPONENTS:
+            component_meta = FORCE_COMPONENT_META[component]
+            companion_rows.append([component_meta["title"], float(companion.get(component, 0.0)), component_meta["unit"], "Selected component" if component == selected_component else "Companion value from same source row"])
+        st.markdown("### Original-row component values")
+        show_engineering_table(pd.DataFrame(companion_rows, columns=["Force / app axis", "Signed value", "Unit", "Role"]))
+        if trace["SourceState"] == SOURCE_STATE_SINGLE:
+            st.markdown('<div class="note-box"><b>SIMULTANEOUS SOURCE VECTOR:</b> P, V2, T, and M3 shown above belong to the same original SINGLE STATE row and may be reviewed as one source vector, subject to the later design-adoption gate.</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="warn-box"><b>NOT A SIMULTANEOUS FORCE VECTOR:</b> this original row is labelled COMPONENT ENVELOPE. The companion P, V2, T, and M3 fields are retained for audit only and must not be used as a synthetic P–M3 or V2–T design pair.</div>', unsafe_allow_html=True)
+        if _trace_toggle(f"{trace['stage_label']} original source rows / detailed QA", default=False):
+            raw = pd.DataFrame(payload.get("records", []))
+            st.dataframe(raw, width="stretch", hide_index=True, height=640)
+
+    else:
+        stage_states = package.get("stage_states", {})
+        axis_status = str(D.get("fea_results", {}).get("axis_convention", {}).get("status", "REVIEW"))
+        axis_ready = "CONFIRMED" in axis_status.upper()
+        uls_ready = stage_states.get("uls", {}).get("status") == "READY" and axis_ready
+        transfer_ready = stage_states.get("transfer", {}).get("status") == "READY" and axis_ready
+        service_ready = stage_states.get("service", {}).get("status") == "READY" and axis_ready
+        station_ready = package.get("station_consistency", {}).get("status") == "READY"
+        connected_modules = {str(item) for item in downstream.get("connected_modules", []) if item}
+
+        def connection(module: str) -> str:
+            return "CONNECTED" if downstream_status == "CONNECTED" and module in connected_modules else "NOT CONNECTED"
+
+        downstream_rows = [
+            ["6 ULS Flexure", "ULS P–M3", "SOURCE READY" if uls_ready else "SOURCE BLOCKED", connection("6 ULS Flexure"), "Select a verified SINGLE STATE or separately approved conservative component-bound P–M3 adoption route; COMPONENT ENVELOPE rows are not a simultaneous pair."],
+            ["7 ULS Shear / Torsion", "ULS V2–T", "SOURCE READY" if uls_ready else "SOURCE BLOCKED", connection("7 ULS Shear / Torsion"), "Select a verified SINGLE STATE or separately approved conservative component-bound V2–T route before design demand adoption."],
+            ["8 SLS Stress", "Transfer + Final Service forces", "SOURCE READY" if transfer_ready and service_ready and station_ready else "SOURCE BLOCKED", connection("8 SLS Stress"), "Transfer has simultaneous vectors; Final Service remains mixed-source scalar bounds. Stress-demand combination and effective-prestress route require a separate connection milestone."],
+            ["9 Deflection", "Service displacement / deformation export", "SOURCE MISSING", connection("9 Deflection"), "The imported Bridge Object Forces workbooks contain forces only. Deflection requires a validated displacement/deformation source package."],
+        ]
+        source_ready_count = sum(row[2] == "SOURCE READY" for row in downstream_rows)
+        connected_count = sum(row[3] == "CONNECTED" for row in downstream_rows)
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            card("SOURCE-READY MODULES", f"{source_ready_count}/4", "Validated source prerequisites only", "pass" if source_ready_count else "warn")
+        with c2:
+            card("CONNECTED MODULES", f"{connected_count}/4", "No source adopted into design checks yet", "pass" if connected_count == 4 else "warn")
+        with c3:
+            card("AXIS MAPPING", "CONFIRMED" if axis_ready else "REVIEW", "P→Axial · V2→Vy · T→Torsion · M3→Mx", "pass" if axis_ready else "warn")
+        with c4:
+            card("DEFLECTION SOURCE", "MISSING", "Force workbooks do not contain displacement", "warn")
+        st.markdown("### Downstream readiness matrix")
+        show_engineering_table(pd.DataFrame(downstream_rows, columns=["Downstream section", "Required source / route", "Source gate", "Connection status", "Open adoption requirement"]))
+        st.markdown(
+            '<div class="warn-box"><b>Connection guard:</b> SOURCE READY means the input package passed source QA only. '
+            'It does not mean the design section is calculated, code-complete, or passing. Sections 6–8 must receive separately reviewed force-adoption routes; '
+            'Section 9 additionally needs a displacement source.</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("### Recommended connection sequence")
+        show_engineering_table(
+            pd.DataFrame(
+                [
+                    [1, "Section 6 — ULS Flexure", "Lock P–M3 demand-pairing/adoption semantics, then connect flexural demand only."],
+                    [2, "Section 7 — ULS Shear / Torsion", "Lock V2–T demand-pairing/adoption semantics and critical-section route."],
+                    [3, "Section 8 — SLS Stress", "Connect Transfer and Final Service force states with the effective-prestress/stress calculation basis."],
+                    [4, "Section 9 — Deflection", "Import and validate service displacement/deformation results before any deflection check connection."],
+                ],
+                columns=["Order", "Connection milestone", "Required closeout"],
+            )
+        )
 
 
 def page_fea_results(sub: str) -> None:

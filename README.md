@@ -15,7 +15,7 @@ This milestone adds **COMMERCIAL.FEA.5D1A — Legacy Project Load Single-Pass Mi
 
 Schema:
 
-- `0.5.11-commercial-fea5d1c-pandas-arrow-string-crash-hotfix`
+- `0.5.12-commercial-fea5e-qa-source-trace-downstream-readiness`
 
 ---
 
@@ -639,3 +639,15 @@ Schema:
 - `pd.options.future.infer_string = False` is set immediately after importing pandas.
 - This avoids pandas 3.x automatic Arrow-backed string inference, the exact native path shown in the Streamlit Cloud crash log (`pandas.core.arrays.string_arrow` → `pyarrow.libarrow`).
 - Plotly remains pinned to `5.24.1`.
+
+
+## COMMERCIAL.FEA.5E — QA / Source Trace and Downstream Readiness
+
+- Closes Section 5.5 as a read-only source-package QA workspace with Summary, Integrity Gates, Governing Trace, and Downstream Readiness views.
+- Recomputes persisted payload integrity from preserved source rows instead of trusting stored summary values alone.
+- Audits stage inventory, finite numeric values, duplicate source identities, cut/station identity, case/step coverage, station bounds, units, semantic counts, compact-envelope source links, SHA trace, Transfer single-state contract, and the common cross-stage station map.
+- Traces any P, V2, T, or M3 minimum, maximum, or maximum-absolute value through the compact envelope to the original OutputCase, StepType, SourceState, source row, workbook, and SHA fingerprint.
+- Shows companion P–V2–T–M3 values from the original source row while explicitly distinguishing SINGLE STATE simultaneous vectors from COMPONENT ENVELOPE audit-only companion fields.
+- Adds a downstream readiness matrix: Sections 6–8 may be source-ready but remain NOT CONNECTED; Section 9 remains SOURCE MISSING until a displacement/deformation export is imported.
+- Does not run or certify ULS flexure, ULS shear/torsion, SLS stress, or deflection checks.
+- Retains the Streamlit Cloud native-crash guards: `pandas==2.3.3`, `plotly==5.24.1`, and `pd.options.future.infer_string = False`.
