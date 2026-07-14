@@ -109,13 +109,13 @@ def test_fea5d1_project_load_summary_exposes_source_and_app_schema_trace():
 
     summary = project_load_summary({
         "meta": {
-            "schema_version": "0.5.15-commercial-ui32a-structured-sdl-and-trace-presets",
+            "schema_version": "0.5.16-commercial-ui32b-prominent-trace-verification-actions",
             "loaded_schema_version": "0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
             "schema_migration_status": "Migrated from 0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
         },
         "project": {"name": "BG40", "bridge_object": "B2_SPAN1"},
     })
-    assert summary["schema_version"].startswith("0.5.15-")
+    assert summary["schema_version"].startswith("0.5.16-")
     assert summary["loaded_schema_version"].startswith("0.5.6-")
     assert summary["schema_migration_status"].startswith("Migrated from")
 

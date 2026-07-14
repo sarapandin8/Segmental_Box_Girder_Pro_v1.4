@@ -10834,19 +10834,40 @@ def _render_fea_source_qa() -> None:
         st.caption("These gates are recomputed from the Project JSON payload; stored summary counts are not accepted without reconciliation against the preserved source rows. Gate severity describes the consequence only if a gate fails; a READY row is not currently blocking the source package.")
 
     elif selected_view == "trace":
-        st.caption("Quick verification presets")
-        p1, p2, p3 = st.columns([1.0, 1.0, 2.0])
-        if p1.button("Transfer M3 · |max|", key="fea_qa_trace_preset_transfer_m3", width="stretch"):
-            st.session_state["fea_qa_trace_stage"] = "transfer"
-            st.session_state["fea_qa_trace_component"] = "M3"
-            st.session_state["fea_qa_trace_extremum"] = "absolute"
-            st.rerun()
-        if p2.button("Final Service P · max", key="fea_qa_trace_preset_service_p", width="stretch"):
-            st.session_state["fea_qa_trace_stage"] = "service"
-            st.session_state["fea_qa_trace_component"] = "P"
-            st.session_state["fea_qa_trace_extremum"] = "maximum"
-            st.rerun()
-        p3.caption("These presets exercise the two verified SINGLE STATE trace paths; custom stage/component/extremum selection remains available below.")
+        st.markdown("#### Verified SINGLE STATE checks")
+        st.info("Choose one highlighted verification button below to load a pre-verified SINGLE STATE trace. The selected stage, component, and extremum will update automatically.")
+        p1, p2 = st.columns(2)
+        with p1:
+            with st.container(border=True):
+                st.markdown("**Transfer-stage vector verification**")
+                st.caption("M3 (Mx) · maximum absolute · expected source row 54")
+                if st.button(
+                    "Run Transfer M3 verification",
+                    key="fea_qa_trace_preset_transfer_m3",
+                    type="primary",
+                    width="stretch",
+                    help="Select Transfer Stage → M3 (Mx) → Maximum absolute and trace the verified SINGLE STATE source row.",
+                ):
+                    st.session_state["fea_qa_trace_stage"] = "transfer"
+                    st.session_state["fea_qa_trace_component"] = "M3"
+                    st.session_state["fea_qa_trace_extremum"] = "absolute"
+                    st.rerun()
+        with p2:
+            with st.container(border=True):
+                st.markdown("**Final-service vector verification**")
+                st.caption("P (Axial) · maximum · expected S1C_02 / Single")
+                if st.button(
+                    "Run Final Service P verification",
+                    key="fea_qa_trace_preset_service_p",
+                    type="primary",
+                    width="stretch",
+                    help="Select Final Service SLS → P (Axial) → Maximum and trace the verified SINGLE STATE source row.",
+                ):
+                    st.session_state["fea_qa_trace_stage"] = "service"
+                    st.session_state["fea_qa_trace_component"] = "P"
+                    st.session_state["fea_qa_trace_extremum"] = "maximum"
+                    st.rerun()
+        st.caption("Custom trace selection remains available below for any stage, component, or extremum.")
         c1, c2, c3 = st.columns(3)
         with c1:
             selected_stage = st.selectbox("Stage", available, format_func=lambda value: STAGE_LABELS[value], key="fea_qa_trace_stage")

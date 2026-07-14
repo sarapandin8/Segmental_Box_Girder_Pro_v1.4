@@ -1,4 +1,4 @@
-# Segmental Box Girder Pro — COMMERCIAL.UI.3.2A
+# Segmental Box Girder Pro — COMMERCIAL.UI.3.2B
 
 This milestone closes the remaining UI items after the Arrow-free input hotfix.
 
@@ -14,7 +14,7 @@ This milestone closes the remaining UI items after the Arrow-free input hotfix.
 
 Schema:
 
-- `0.5.15-commercial-ui32a-structured-sdl-and-trace-presets`
+- `0.5.16-commercial-ui32b-prominent-trace-verification-actions`
 
 ---
 
@@ -699,3 +699,10 @@ Schema:
 - Adds a downstream readiness matrix: Sections 6–8 may be source-ready but remain NOT CONNECTED; Section 9 remains SOURCE MISSING until a displacement/deformation export is imported.
 - Does not run or certify ULS flexure, ULS shear/torsion, SLS stress, or deflection checks.
 - Retains the Streamlit Cloud native-crash guards: `pandas==2.3.3`, `plotly==5.24.1`, and `pd.options.future.infer_string = False`.
+
+
+## UI.3.2B trace-action polish
+
+- Replaces flat quick-preset buttons with two bordered verification cards.
+- Uses prominent primary action buttons with explicit “Run … verification” labels, preset descriptions, and hover help.
+- Keeps custom stage/component/extremum selectors directly below the verified actions.
