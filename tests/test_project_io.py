@@ -109,13 +109,13 @@ def test_fea5d1_project_load_summary_exposes_source_and_app_schema_trace():
 
     summary = project_load_summary({
         "meta": {
-            "schema_version": "0.5.16-commercial-ui32b-prominent-trace-verification-actions",
+            "schema_version": "0.5.17-commercial-ui32c-compact-reversible-sdl-schedule",
             "loaded_schema_version": "0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
             "schema_migration_status": "Migrated from 0.5.6-commercial-fea5c1-transfer-signed-governing-display-consistency",
         },
         "project": {"name": "BG40", "bridge_object": "B2_SPAN1"},
     })
-    assert summary["schema_version"].startswith("0.5.16-")
+    assert summary["schema_version"].startswith("0.5.17-")
     assert summary["loaded_schema_version"].startswith("0.5.6-")
     assert summary["schema_migration_status"].startswith("Migrated from")
 
@@ -159,3 +159,76 @@ def test_fea5d1a_memory_safe_save_does_not_mutate_current_project_meta() -> None
     reloaded = load_project_json_bytes(saved, "saved-current.json")
     assert reloaded["meta"]["schema_version"] == PROJECT_SCHEMA_VERSION
     assert reloaded["meta"]["schema_migration_status"] == "Current"
+
+
+def test_ui32c_sdl_migration_restores_standard_rows_and_preserves_custom_rows() -> None:
+    legacy = json.loads(json.dumps(BG40_DEFAULT))
+    legacy["meta"]["schema_version"] = "0.5.16-commercial-ui32b-prominent-trace-verification-actions"
+    legacy["meta"].pop("migration_complete", None)
+    legacy["meta"].pop("migration_target_schema_version", None)
+    legacy["load_components"]["sdl_components"] = [
+        {
+            "Component": "Rails w/Fastener",
+            "Single Track (kN/m)": 1.55,
+            "Double Track (kN/m)": 3.10,
+            "Include": True,
+            "Source": "BG40 R10",
+            "Note": "legacy alias",
+        },
+        {
+            "Component": "Ballast (Ballastless - none)",
+            "Single Track (kN/m)": 0.0,
+            "Double Track (kN/m)": 0.0,
+            "Include": True,
+        },
+        {
+            "Component": "Maintenance walkway",
+            "Single Track (kN/m)": 1.20,
+            "Double Track (kN/m)": 1.20,
+            "Include": True,
+            "Source": "Project input",
+        },
+    ]
+
+    migrated = load_project_json_bytes(json.dumps(legacy).encode("utf-8"), "legacy-sdl.json")
+    rows = migrated["load_components"]["sdl_components"]
+    standard = [row for row in rows if row["RowType"] == "STANDARD"]
+    custom = [row for row in rows if row["RowType"] == "CUSTOM"]
+
+    assert len(standard) == 9
+    assert [row["Component"] for row in standard] == [
+        "Rails with Fasteners",
+        "Track Supporting Structure / Concrete Plinth",
+        "Signaling Equipment",
+        "Power Supply System",
+        "Telecommunication System",
+        "Parapet / Noise Barrier",
+        "Concrete Cable Box",
+        "Cables",
+        "Drainage System",
+    ]
+    assert standard[0]["Single Track (kN/m)"] == 1.55
+    assert standard[0]["Double Track (kN/m)"] == 3.10
+    assert all(row["Include"] is True and row["Archived"] is False for row in standard)
+    assert all("Ballast (Ballastless - none)" != row["Component"] for row in rows)
+    assert len(custom) == 1
+    assert custom[0]["Component"] == "Maintenance walkway"
+    assert custom[0]["Archived"] is False
+
+
+def test_ui32c_archived_custom_sdl_row_is_excluded_but_preserved() -> None:
+    from core.load_models import sdl_totals
+
+    rows = json.loads(json.dumps(BG40_DEFAULT["load_components"]["sdl_components"]))
+    rows.append({
+        "Component": "Archived custom load",
+        "Single Track (kN/m)": 10.0,
+        "Double Track (kN/m)": 12.0,
+        "Include": False,
+        "RowType": "CUSTOM",
+        "Archived": True,
+    })
+    totals = sdl_totals(rows)
+    assert abs(totals["single_total"] - 62.14) < 0.02
+    assert abs(totals["double_total"] - 84.19) < 0.02
+    assert rows[-1]["Component"] == "Archived custom load"

@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Iterable, Literal
 
-PROJECT_SCHEMA_VERSION = "0.5.16-commercial-ui32b-prominent-trace-verification-actions"
+PROJECT_SCHEMA_VERSION = "0.5.17-commercial-ui32c-compact-reversible-sdl-schedule"
 
 IssueLevel = Literal["ERROR", "WARNING", "INFO"]
 
@@ -164,6 +164,106 @@ def _migrate_fea_result_sources(data: Dict) -> None:
     downstream.setdefault("source_package_fingerprint", "")
     downstream.setdefault("note", "Sections 6–9 continue to use existing BG40/keyed demands until a separately reviewed connection milestone is implemented.")
 
+
+_SDL_COMPONENT_ALIASES = {
+    "rails w/fastener": "Rails with Fasteners",
+    "rails with fastener": "Rails with Fasteners",
+    "rails with fasteners": "Rails with Fasteners",
+    "track supporting structure (plinth)": "Track Supporting Structure / Concrete Plinth",
+    "track supporting structure / plinth": "Track Supporting Structure / Concrete Plinth",
+    "track supporting structure / concrete plinth": "Track Supporting Structure / Concrete Plinth",
+    "power supply": "Power Supply System",
+    "power supply system": "Power Supply System",
+    "telecommunication": "Telecommunication System",
+    "telecommunication system": "Telecommunication System",
+    "drainage": "Drainage System",
+    "drainage system": "Drainage System",
+}
+
+
+def _canonical_sdl_component_name(value) -> str:
+    text = str(value or "").strip()
+    return _SDL_COMPONENT_ALIASES.get(text.casefold(), text)
+
+
+def _sdl_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _migrate_sdl_component_schedule(data: Dict, defaults: Dict) -> None:
+    """Restore the fixed BG40 SDL schedule and preserve custom project rows.
+
+    UI.3.2C removes destructive standard-row deletion.  During migration, every
+    standard report row is therefore restored in the report order, using any
+    saved numeric values that still exist.  Non-standard rows are retained as
+    project-specific custom inputs.  The old ballastless zero placeholder is
+    removed because it is not part of the BG40 SDL schedule and contributes no
+    load.
+    """
+    if not isinstance(data, dict):
+        return
+    load_components = data.setdefault("load_components", {})
+    if not isinstance(load_components, dict):
+        data["load_components"] = {}
+        load_components = data["load_components"]
+
+    default_rows = defaults.get("load_components", {}).get("sdl_components", [])
+    standard_defaults = {
+        str(row.get("Component", "")): deepcopy(row)
+        for row in default_rows
+        if isinstance(row, dict) and str(row.get("Component", "")).strip()
+    }
+    existing_rows = load_components.get("sdl_components", [])
+    if not isinstance(existing_rows, list):
+        existing_rows = []
+
+    saved_standard: dict[str, dict] = {}
+    custom_rows: list[dict] = []
+    for raw in existing_rows:
+        if not isinstance(raw, dict):
+            continue
+        row = dict(raw)
+        name = _canonical_sdl_component_name(row.get("Component"))
+        single = _sdl_float(row.get("Single Track (kN/m)"), 0.0)
+        double = _sdl_float(row.get("Double Track (kN/m)"), 0.0)
+        if name.casefold() == "ballast (ballastless - none)" and single == 0.0 and double == 0.0:
+            continue
+
+        declared_type = str(row.get("RowType", "")).strip().upper()
+        if name in standard_defaults and declared_type != "CUSTOM":
+            merged = deepcopy(standard_defaults[name])
+            merged["Single Track (kN/m)"] = single
+            merged["Double Track (kN/m)"] = double
+            merged["Include"] = True
+            merged["RowType"] = "STANDARD"
+            merged["Archived"] = False
+            saved_standard[name] = merged
+            continue
+
+        if not name:
+            name = "Project-specific SDL component"
+        archived = bool(row.get("Archived", False)) or not bool(row.get("Include", True))
+        row.update(
+            {
+                "Component": name,
+                "Single Track (kN/m)": single,
+                "Double Track (kN/m)": double,
+                "Include": not archived,
+                "Source": str(row.get("Source") or "Project-specific user input"),
+                "Note": str(row.get("Note") or "Custom SDL component"),
+                "RowType": "CUSTOM",
+                "Archived": archived,
+            }
+        )
+        custom_rows.append(row)
+
+    normalized = [saved_standard.get(name, deepcopy(default_row)) for name, default_row in standard_defaults.items()]
+    normalized.extend(custom_rows)
+    load_components["sdl_components"] = normalized
+
 def _deep_fill_missing(target: Dict, defaults: Dict) -> Dict:
     for key, default_value in defaults.items():
         if key not in target:
@@ -220,9 +320,11 @@ def _migrate_project_schema_in_place(
 
     _migrate_section_coordinate_rows(data)
     _migrate_fea_result_sources(data)
+    _migrate_sdl_component_schedule(data, BG40_DEFAULT)
     data = _deep_fill_missing(data, BG40_DEFAULT)
     _migrate_section_coordinate_rows(data)
     _migrate_fea_result_sources(data)
+    _migrate_sdl_component_schedule(data, BG40_DEFAULT)
 
     from core.code_basis import migrate_project_code_basis
 

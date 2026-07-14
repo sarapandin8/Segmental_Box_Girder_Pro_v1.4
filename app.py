@@ -1601,45 +1601,67 @@ def _bump_sdl_structured_editor_epoch() -> None:
     st.session_state[key] = int(st.session_state.get(key, 0)) + 1
 
 
-def render_arrow_free_sdl_component_table(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Render the SDL component schedule as native Streamlit row inputs.
+def _sdl_row_is_custom(row: dict[str, Any]) -> bool:
+    return str(row.get("RowType", "STANDARD")).strip().upper() == "CUSTOM"
 
-    This deliberately avoids ``st.data_editor`` and DataFrame widget serialization.
-    Each cell is a native checkbox, text input, or number input, so the commercial
-    table remains editable without entering the PyArrow crash path.
+
+def _sdl_row_is_archived(row: dict[str, Any]) -> bool:
+    return bool(row.get("Archived", False))
+
+
+def _sdl_component_name_exists(rows: list[dict[str, Any]], name: str) -> bool:
+    normalized = name.strip().casefold()
+    return any(str(row.get("Component", "")).strip().casefold() == normalized for row in rows)
+
+
+def render_compact_sdl_component_table(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Render a compact, Arrow-safe SDL schedule.
+
+    The visible engineering schedule intentionally has only three columns:
+    Component, Single Track, and Double Track.  Standard BG40 rows are fixed and
+    cannot be deleted.  Project-specific rows are added through a separate form
+    and can be archived/restored from a collapsed management panel.
     """
     project_epoch = _project_widget_epoch()
     epoch_key = f"sdl_structured_editor_epoch_{project_epoch}"
     editor_epoch = int(st.session_state.get(epoch_key, 0))
-    prefix = f"sdl_structured_{project_epoch}_{editor_epoch}"
+    prefix = f"sdl_compact_{project_epoch}_{editor_epoch}"
+    active_rows = [dict(row or {}) for row in rows if not _sdl_row_is_archived(dict(row or {}))]
 
     st.caption(
-        "Structured SDL component table — edit each cell directly. Changes feed the SDL totals, "
-        "FEA summary, Save/Load JSON, and report trace immediately."
+        "Source: BG40 R10 project load schedule · Units: kN/m. Standard component names are fixed; "
+        "use Add SDL component for project-specific permanent loads."
     )
-    header = st.columns([0.48, 2.30, 1.12, 1.12, 1.30, 2.15, 0.48], gap="small")
-    labels = ["Include", "Component", "Single Track (kN/m)", "Double Track (kN/m)", "Source", "Note", ""]
+    header = st.columns([3.35, 1.25, 1.25], gap="small")
+    labels = ["Component", "Single Track (kN/m)", "Double Track (kN/m)"]
     for col, label in zip(header, labels):
-        col.markdown(f"<div style='font-size:0.73rem;font-weight:700;color:#52637a;padding:0.15rem 0 0.25rem 0'>{escape(label)}</div>", unsafe_allow_html=True)
+        col.markdown(
+            f"<div style='font-size:0.74rem;font-weight:850;color:#52637a;padding:0.10rem 0 0.22rem 0'>{escape(label)}</div>",
+            unsafe_allow_html=True,
+        )
 
-    updated: list[dict[str, Any]] = []
-    delete_index: int | None = None
-    for index, source_row in enumerate(rows):
-        row = dict(source_row or {})
-        cols = st.columns([0.48, 2.30, 1.12, 1.12, 1.30, 2.15, 0.48], gap="small")
-        include = cols[0].checkbox(
-            f"Include row {index + 1}",
-            value=bool(row.get("Include", True)),
-            key=f"{prefix}_{index}_include",
-            label_visibility="collapsed",
-        )
-        component = cols[1].text_input(
-            f"Component row {index + 1}",
-            value=str(row.get("Component", "")),
-            key=f"{prefix}_{index}_component",
-            label_visibility="collapsed",
-        )
-        single = cols[2].number_input(
+    updated_active: list[dict[str, Any]] = []
+    for index, source_row in enumerate(active_rows):
+        row = dict(source_row)
+        is_custom = _sdl_row_is_custom(row)
+        cols = st.columns([3.35, 1.25, 1.25], gap="small")
+        if is_custom:
+            component = cols[0].text_input(
+                f"Custom SDL component row {index + 1}",
+                value=str(row.get("Component", "Project-specific SDL component")),
+                key=f"{prefix}_{index}_component",
+                label_visibility="collapsed",
+            ).strip()
+        else:
+            component = str(row.get("Component", "")).strip()
+            cols[0].markdown(
+                "<div style='min-height:2.50rem;display:flex;align-items:center;padding:0 0.68rem;"
+                "border:1px solid #e4e7ec;border-radius:0.55rem;background:#f8fafc;"
+                "font-size:0.86rem;color:#26364a;font-weight:650'>"
+                f"{escape(component)}</div>",
+                unsafe_allow_html=True,
+            )
+        single = cols[1].number_input(
             f"Single Track row {index + 1}",
             min_value=0.0,
             value=float(row.get("Single Track (kN/m)", 0.0) or 0.0),
@@ -1648,7 +1670,7 @@ def render_arrow_free_sdl_component_table(rows: list[dict[str, Any]]) -> list[di
             key=f"{prefix}_{index}_single",
             label_visibility="collapsed",
         )
-        double = cols[3].number_input(
+        double = cols[2].number_input(
             f"Double Track row {index + 1}",
             min_value=0.0,
             value=float(row.get("Double Track (kN/m)", 0.0) or 0.0),
@@ -1657,95 +1679,137 @@ def render_arrow_free_sdl_component_table(rows: list[dict[str, Any]]) -> list[di
             key=f"{prefix}_{index}_double",
             label_visibility="collapsed",
         )
-        source = cols[4].text_input(
-            f"Source row {index + 1}",
-            value=str(row.get("Source", "")),
-            key=f"{prefix}_{index}_source",
-            label_visibility="collapsed",
-        )
-        note = cols[5].text_input(
-            f"Note row {index + 1}",
-            value=str(row.get("Note", "")),
-            key=f"{prefix}_{index}_note",
-            label_visibility="collapsed",
-        )
-        if cols[6].button("×", key=f"{prefix}_{index}_delete", help=f"Remove {component or 'this component'}"):
-            delete_index = index
-        updated.append(
+        updated = dict(row)
+        updated.update(
             {
-                "Component": component.strip(),
+                "Component": component or "Project-specific SDL component",
                 "Single Track (kN/m)": float(single),
                 "Double Track (kN/m)": float(double),
-                "Include": bool(include),
-                "Source": source.strip(),
-                "Note": note.strip(),
+                "Include": True,
+                "Archived": False,
+                "RowType": "CUSTOM" if is_custom else "STANDARD",
             }
         )
+        updated_active.append(updated)
 
-    if delete_index is not None:
-        updated.pop(delete_index)
-        D["load_components"]["sdl_components"] = updated
-        _bump_sdl_structured_editor_epoch()
-        st.rerun()
+    archived_rows = [dict(row or {}) for row in rows if _sdl_row_is_archived(dict(row or {}))]
+    combined_rows = updated_active + archived_rows
+    totals = sdl_totals(updated_active)
+    total_cols = st.columns([3.35, 1.25, 1.25], gap="small")
+    total_cols[0].markdown(
+        "<div style='min-height:2.15rem;display:flex;align-items:center;padding:0 0.68rem;"
+        "border-top:2px solid #bcd3f5;font-size:0.86rem;color:#092454;font-weight:900'>Calculated total</div>",
+        unsafe_allow_html=True,
+    )
+    total_cols[1].markdown(
+        f"<div style='min-height:2.15rem;display:flex;align-items:center;justify-content:flex-end;padding:0 0.68rem;"
+        f"border-top:2px solid #bcd3f5;color:#092454;font-weight:950'>{totals['single_total']:.2f}</div>",
+        unsafe_allow_html=True,
+    )
+    total_cols[2].markdown(
+        f"<div style='min-height:2.15rem;display:flex;align-items:center;justify-content:flex-end;padding:0 0.68rem;"
+        f"border-top:2px solid #bcd3f5;color:#092454;font-weight:950'>{totals['double_total']:.2f}</div>",
+        unsafe_allow_html=True,
+    )
 
-    c_add, c_note = st.columns([1.0, 3.0])
-    with c_add:
-        if st.button("Add SDL component", key=f"{prefix}_add", width="stretch"):
-            updated.append(
-                {
-                    "Component": "New SDL component",
-                    "Single Track (kN/m)": 0.0,
-                    "Double Track (kN/m)": 0.0,
-                    "Include": True,
-                    "Source": "User input",
-                    "Note": "",
-                }
+    add_state_key = f"{prefix}_show_add_form"
+    if st.button(
+        "＋ Add SDL component",
+        key=f"{prefix}_open_add",
+        type="primary",
+        help="Add a project-specific SDL item without changing the fixed BG40 schedule rows.",
+    ):
+        st.session_state[add_state_key] = True
+
+    if st.session_state.get(add_state_key, False):
+        with st.container(border=True):
+            st.markdown("**Add project-specific SDL component**")
+            c_name, c_single, c_double = st.columns([2.6, 1.1, 1.1], gap="small")
+            new_name = c_name.text_input(
+                "Component name",
+                key=f"{prefix}_new_name",
+                placeholder="e.g. Maintenance walkway",
             )
-            D["load_components"]["sdl_components"] = updated
-            _bump_sdl_structured_editor_epoch()
-            st.rerun()
-    with c_note:
-        st.caption("Use × to remove a row. Advanced CSV import/export remains available below for bulk editing.")
-    return updated
-
-
-def render_sdl_advanced_csv_tools(rows: list[dict[str, Any]], columns: list[str]) -> None:
-    """Bulk SDL CSV tools kept behind an expander; no automatic text overwrite."""
-    project_epoch = _project_widget_epoch()
-    editor_epoch = int(st.session_state.get(f"sdl_structured_editor_epoch_{project_epoch}", 0))
-    key = f"sdl_advanced_csv_{project_epoch}_{editor_epoch}"
-    current_df = pd.DataFrame(rows, columns=columns)
-    current_csv = dataframe_to_csv_text(current_df, columns, float_format="%.4f")
-    if key not in st.session_state:
-        st.session_state[key] = current_csv
-    with st.expander("Advanced CSV import / export", expanded=False):
-        st.caption("Use this only for bulk edits. The structured table above remains the normal engineering input path.")
-        text = st.text_area("SDL component CSV", key=key, height=280, label_visibility="collapsed")
-        c1, c2, c3 = st.columns([1.0, 1.0, 1.2])
-        if c1.button("Apply CSV to table", key=f"{key}_apply", width="stretch"):
-            try:
-                parsed = parse_csv_editor_text(
-                    text,
-                    columns=columns,
-                    numeric_columns=("Single Track (kN/m)", "Double Track (kN/m)"),
-                    boolean_columns=("Include",),
-                )
-                D["load_components"]["sdl_components"] = parsed.to_dict("records")
-                _bump_sdl_structured_editor_epoch()
+            new_single = c_single.number_input(
+                "Single Track (kN/m)",
+                min_value=0.0,
+                value=0.0,
+                step=0.01,
+                format="%.2f",
+                key=f"{prefix}_new_single",
+            )
+            new_double = c_double.number_input(
+                "Double Track (kN/m)",
+                min_value=0.0,
+                value=0.0,
+                step=0.01,
+                format="%.2f",
+                key=f"{prefix}_new_double",
+            )
+            c_add, c_cancel, _ = st.columns([1.2, 1.0, 3.0])
+            if c_add.button("Add component", key=f"{prefix}_confirm_add", type="primary", width="stretch"):
+                clean_name = new_name.strip()
+                if not clean_name:
+                    st.error("Enter a component name before adding the SDL item.")
+                elif _sdl_component_name_exists(combined_rows, clean_name):
+                    st.error(f"An SDL component named '{clean_name}' already exists.")
+                else:
+                    combined_rows.append(
+                        {
+                            "Component": clean_name,
+                            "Single Track (kN/m)": float(new_single),
+                            "Double Track (kN/m)": float(new_double),
+                            "Include": True,
+                            "Source": "Project-specific user input",
+                            "Note": "Custom SDL component",
+                            "RowType": "CUSTOM",
+                            "Archived": False,
+                        }
+                    )
+                    D["load_components"]["sdl_components"] = combined_rows
+                    st.session_state[add_state_key] = False
+                    _bump_sdl_structured_editor_epoch()
+                    st.rerun()
+            if c_cancel.button("Cancel", key=f"{prefix}_cancel_add", width="stretch"):
+                st.session_state[add_state_key] = False
                 st.rerun()
-            except ValueError as exc:
-                st.error(f"CSV not applied: {exc}")
-        if c2.button("Refresh from table", key=f"{key}_refresh", width="stretch"):
-            st.session_state[key] = current_csv
-            st.rerun()
-        c3.download_button(
-            "Download SDL CSV",
-            current_csv.encode("utf-8"),
-            "sdl_components.csv",
-            "text/csv",
-            key=f"{key}_download",
-            width="stretch",
+
+    custom_rows = [row for row in combined_rows if _sdl_row_is_custom(row)]
+    if custom_rows:
+        with st.expander("Manage project-specific SDL components", expanded=False):
+            st.caption(
+                "Archive removes a custom row from the active SDL total without deleting it. "
+                "Archived rows can be restored at any time. Standard BG40 rows cannot be archived."
+            )
+            for custom_index, custom_row in enumerate(custom_rows):
+                archived = _sdl_row_is_archived(custom_row)
+                c_name, c_state, c_action = st.columns([2.8, 1.0, 1.0], gap="small")
+                c_name.markdown(f"**{escape(str(custom_row.get('Component', 'Custom SDL component')))}**")
+                c_state.caption("ARCHIVED" if archived else "ACTIVE")
+                action_label = "Restore" if archived else "Archive"
+                if c_action.button(action_label, key=f"{prefix}_custom_{custom_index}_{action_label.lower()}", width="stretch"):
+                    target_name = str(custom_row.get("Component", ""))
+                    target_occurrence = 0
+                    for row in combined_rows:
+                        if _sdl_row_is_custom(row) and str(row.get("Component", "")) == target_name:
+                            if target_occurrence == 0:
+                                row["Archived"] = not archived
+                                row["Include"] = archived
+                                break
+                            target_occurrence -= 1
+                    D["load_components"]["sdl_components"] = combined_rows
+                    _bump_sdl_structured_editor_epoch()
+                    st.rerun()
+
+    with st.expander("SDL basis and source notes", expanded=False):
+        st.markdown(
+            "- Standard component basis: **BG40 R10 project load schedule**.\n"
+            "- Standard rows are fixed and always included in the calculated schedule total.\n"
+            "- Project-specific rows are identified internally as custom inputs and remain fully traceable in Project JSON.\n"
+            "- The adopted design SDL values below may intentionally round up the calculated schedule totals."
         )
+    return combined_rows
+
 
 def _normalize_eq_fea_adoption_mode(value: Any) -> str:
     """Return the current EQ FEA adoption mode with legacy wording migrated."""
@@ -2373,17 +2437,15 @@ def page_loads(sub: str) -> None:
         D["bridge_model"]["number_of_tracks"] = selected_track
         st.markdown(f'<div class="note-box"><b>SDL selection rule:</b> Active FEA SDL basis = {selected_track}. The app still keeps both single-track and double-track totals for report traceability.</div>', unsafe_allow_html=True)
 
-        sdl_columns = ["Component", "Single Track (kN/m)", "Double Track (kN/m)", "Include", "Source", "Note"]
         with st.container(border=True):
-            structured_rows = render_arrow_free_sdl_component_table(D["load_components"]["sdl_components"])
+            structured_rows = render_compact_sdl_component_table(D["load_components"]["sdl_components"])
         D["load_components"]["sdl_components"] = structured_rows
-        render_sdl_advanced_csv_tools(structured_rows, sdl_columns)
         ld = load_derived()
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            card("Total SDL — single", f"{format_engineering_value(ld['sdl_single_total'], 'kN/m')} kN/m", "sum of included rows")
+            card("Total SDL — single", f"{format_engineering_value(ld['sdl_single_total'], 'kN/m')} kN/m", "sum of active component rows")
         with c2:
-            card("Total SDL — double", f"{format_engineering_value(ld['sdl_double_total'], 'kN/m')} kN/m", "sum of included rows")
+            card("Total SDL — double", f"{format_engineering_value(ld['sdl_double_total'], 'kN/m')} kN/m", "sum of active component rows")
         with c3:
             card("Active SDL basis", str(ld["sdl_track_basis"]), "selected track configuration", "pass")
         with c4:

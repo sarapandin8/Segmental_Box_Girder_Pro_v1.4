@@ -1,20 +1,21 @@
-# Segmental Box Girder Pro — COMMERCIAL.UI.3.2B
+# Segmental Box Girder Pro — COMMERCIAL.UI.3.2C
 
-This milestone closes the remaining UI items after the Arrow-free input hotfix.
+Compact, reversible SDL schedule with project-specific component addition.
 
 ## Scope implemented
 
-- Replaces the normal 3.2 SDL CSV text block with a structured native Streamlit component table using checkbox, text input, and number input cells.
-- Keeps SDL component totals, adopted values, FEA summary, report trace, and Save/Load JSON on the same source rows.
-- Keeps bulk CSV editing only inside a collapsed Advanced CSV import / export expander.
-- Preserves the permanent ban on `st.data_editor` so editable inputs do not enter the Streamlit/PyArrow native-crash path.
-- Formats Section 2.3 coordinate CSV values to four decimals to remove floating-point display residue without changing stored engineering values.
-- Adds one-click 5.5 Governing Trace presets for Transfer M3 maximum-absolute and Final Service P maximum SINGLE STATE verification.
-- Retains `pandas==2.3.3`, `plotly==5.24.1`, and `pd.options.future.infer_string = False`.
+- Reduces the visible 3.2 SDL schedule to three engineering columns only: `Component`, `Single Track (kN/m)`, and `Double Track (kN/m)`.
+- Restores the nine fixed BG40 R10 report components during project migration and removes the zero ballastless placeholder from the SDL schedule.
+- Prevents destructive deletion of standard rows; standard component names remain fixed while their single-track and double-track values remain editable.
+- Keeps a prominent `＋ Add SDL component` action for project-specific permanent loads.
+- Adds reversible custom-row management: custom rows can be archived from the active total and restored later; they are never permanently deleted from the UI.
+- Shows the calculated single-track and double-track totals directly at the bottom of the compact schedule.
+- Removes the previous Include, Source, Note, delete, and bulk CSV controls from the normal SDL workspace while retaining source/trace metadata internally in Project JSON.
+- Preserves the permanent `st.data_editor` ban and the Streamlit Cloud native-crash dependency locks.
 
 Schema:
 
-- `0.5.16-commercial-ui32b-prominent-trace-verification-actions`
+- `0.5.17-commercial-ui32c-compact-reversible-sdl-schedule`
 
 ---
 
